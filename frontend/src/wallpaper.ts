@@ -1,5 +1,5 @@
 export const WALLPAPER_ENABLED_STORAGE_KEY = 'netbox-wallpaper-enabled';
-export const WALLPAPER_URL_STORAGE_KEY = 'netbox-wallpaper-url-nature';
+export const WALLPAPER_URL_STORAGE_KEY = 'netbox-wallpaper-url-nature-hd';
 
 export function isWallpaperEnabled(): boolean {
   if (typeof window === 'undefined') return false;

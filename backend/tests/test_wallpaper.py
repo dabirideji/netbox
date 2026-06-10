@@ -79,7 +79,7 @@ def test_fetch_wallpaper_returns_image_url(monkeypatch: pytest.MonkeyPatch) -> N
     assert "orientation=landscape" in request_url
     assert "query=" in request_url
     assert result == {
-        "url": "https://images.pexels.com/photos/example-medium.jpeg",
+        "url": "https://images.pexels.com/photos/example-large2x.jpeg",
         "photographer": "Jane Doe",
         "photoUrl": "https://www.pexels.com/photo/example/",
     }

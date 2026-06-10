@@ -11,6 +11,15 @@ import urllib.request
 from typing import Any
 
 PEXELS_SEARCH_URL = "https://api.pexels.com/v1/search"
+# Prefer highest available resolution for full-viewport backgrounds.
+IMAGE_SIZE_PRIORITY = (
+    "large2x",
+    "original",
+    "large",
+    "landscape",
+    "medium",
+    "small",
+)
 NATURE_QUERIES = (
     "nature",
     "forest",
@@ -68,8 +77,11 @@ def fetch_wallpaper() -> dict[str, Any]:
     if not isinstance(src, dict):
         raise ValueError("Pexels photo payload is invalid")
 
-    image_url = src.get("medium") or src.get("large") or src.get("landscape") or src.get("small")
-    if not isinstance(image_url, str) or not image_url:
+    image_url = next(
+        (url for size in IMAGE_SIZE_PRIORITY if isinstance(url := src.get(size), str) and url),
+        None,
+    )
+    if not image_url:
         raise ValueError("Pexels photo has no usable image URL")
 
     photographer = photo.get("photographer")
