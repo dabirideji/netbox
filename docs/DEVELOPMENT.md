@@ -71,11 +71,12 @@ config/
 
 Use JSON config for structured application defaults and dotenv files for environment-specific values:
 
-- `.env` holds development environment values such as ports, database path, and config directory.
-- `.env.production` holds production runtime defaults and is loaded when `NETBOX_ENV=production`.
+- `.env.example` is the committed template copied to `.env` by `make setup`.
+- `.env` holds local development environment values such as ports, database path, and config directory (gitignored).
+- `.env.production` holds production runtime defaults and is loaded when `NETBOX_ENV=production` (gitignored).
 - `config/*.json` holds reviewable, typed defaults for backend behavior, frontend dev behavior, targets, and security policy.
-- `.env.local` and `.env.*.local` are reserved for private machine-specific overrides and ignored by git.
-- `PEXELS_API_KEY` enables the optional dashboard wallpaper proxy; keep it in `.env.local`, not in committed dotenv files.
+- `.env.local` and `.env.*.local` are reserved for private machine-specific overrides and secrets (gitignored).
+- `PEXELS_API_KEY` enables the optional dashboard wallpaper proxy; keep it in `.env.local`, not in committed files.
 
 Runtime precedence is shell environment variables first, dotenv files second, JSON config third, and safe code defaults last. Dotenv files load as `.env`, `.env.local`, `.env.<NETBOX_ENV>`, and `.env.<NETBOX_ENV>.local`. Prefer adding new cross-cutting defaults to `config/*.json`; use environment variables for deployment-specific overrides or sensitive values.
 
@@ -83,12 +84,12 @@ Runtime precedence is shell environment variables first, dotenv files second, JS
 
 `.gitignore` excludes:
 
-- Secrets: `.env.local`, `.env.*.local`, key material
+- Secrets: `.env`, `.env.production`, `.env.local`, `.env.*.local`, key material
 - Runtime data: `data/`, `*.sqlite3`
 - Build and cache output: `frontend/dist`, `frontend/node_modules`, Python `__pycache__`, coverage reports
 - IDE and OS clutter: `.idea/`, `.vscode/`, `.DS_Store`
 
-Safe to commit: source code, `config/`, `.env`, `.env.production`, `.env.example`, and documentation.
+Safe to commit: source code, `config/`, `.env.example`, and documentation.
 
 ## Coding Standards
 

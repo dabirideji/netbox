@@ -53,7 +53,8 @@ setup: setup-check setup-dirs setup-env install
 	@printf "  Next steps:\n"
 	@printf "    make run              Start the hot-reload dev stack\n"
 	@printf "    make test             Verify backend and frontend tests\n\n"
-	@printf "  Optional: add PEXELS_API_KEY to .env.local for dashboard wallpapers.\n\n"
+	@printf "  Optional: add PEXELS_API_KEY to .env.local for dashboard wallpapers.\n"
+	@printf "  For production, copy .env.example to .env.production and adjust hosts.\n\n"
 
 setup-check:
 	@command -v $(PYTHON) >/dev/null 2>&1 || (printf "python3 is required but was not found in PATH.\n" && exit 1)
@@ -64,9 +65,9 @@ setup-dirs:
 	@mkdir -p data .dev/static
 
 setup-env:
-	@if [ ! -f .env.local ] && [ -f .env.example ]; then \
-		cp .env.example .env.local; \
-		printf "  Created .env.local from .env.example\n"; \
+	@if [ ! -f .env ] && [ -f .env.example ]; then \
+		cp .env.example .env; \
+		printf "  Created .env from .env.example\n"; \
 	fi
 
 check-run:

@@ -192,7 +192,7 @@ Configuration is intentionally layered:
 
 The backend resolves relative paths against the project root, validates bind hosts through `config/security.json`, applies configured security headers to every HTTP response, and reads default external targets from `config/targets.json`. The frontend Vite config reads the same root dotenv values and `config/frontend.json`, so `make run`, Vite HMR, and backend proxy settings stay in sync.
 
-Secrets such as `PEXELS_API_KEY` belong in `.env.local` only. Committed dotenv files hold non-secret defaults.
+Secrets such as `PEXELS_API_KEY` belong in `.env.local` only. `.env` and `.env.production` are gitignored local/runtime files; `.env.example` is the committed template.
 
 ## Persistence
 

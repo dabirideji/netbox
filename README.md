@@ -52,7 +52,7 @@ data/                    Local SQLite database (gitignored)
 
 ## Configuration
 
-Defaults live in `config/*.json`. Runtime values load from `.env`, then optional `.env.local` (gitignored), then `.env.<NETBOX_ENV>` files.
+Defaults live in `config/*.json`. Runtime values load from `.env` (local, gitignored), optional `.env.local`, then `.env.<NETBOX_ENV>` files.
 
 | Path | Purpose |
 | --- | --- |
@@ -61,11 +61,12 @@ Defaults live in `config/*.json`. Runtime values load from `.env`, then optional
 | `config/targets.json` | Default external ping targets |
 | `config/speed.json` | NDT7 speed-test policy |
 | `config/security.json` | Bind allow-list and security headers |
-| `.env` | Development ports and shared defaults |
-| `.env.production` | Production defaults when `NETBOX_ENV=production` |
-| `.env.local` | Private overrides and secrets (gitignored) |
+| `.env.example` | Committed template — `make setup` copies this to `.env` |
+| `.env` | Local development overrides (gitignored) |
+| `.env.production` | Production overrides when `NETBOX_ENV=production` (gitignored) |
+| `.env.local` | Private secrets and machine-specific overrides (gitignored) |
 
-Optional Pexels wallpaper support proxies nature images through the backend. Copy `.env.example` to `.env.local` and set `PEXELS_API_KEY`. Never commit real API keys.
+Optional Pexels wallpaper support proxies nature images through the backend. Set `PEXELS_API_KEY` in `.env.local`. Never commit real API keys.
 
 ## Dashboard features
 
@@ -79,7 +80,7 @@ UI preferences such as collapsed dashboard sections sync to SQLite via `/api/pre
 
 ## Git and secrets
 
-`.gitignore` excludes local secrets, runtime data, build output, and tool caches. Safe to commit: source, `config/`, `.env`, `.env.production`, and `.env.example`. Keep private values in `.env.local` only.
+`.gitignore` excludes local env files, secrets, runtime data, build output, and tool caches. Safe to commit: source, `config/`, and `.env.example`. Keep `.env`, `.env.production`, and `.env.local` on your machine only.
 
 Before your first push, run `git add -A && git status` and confirm no secrets or `data/` files are staged.
 
