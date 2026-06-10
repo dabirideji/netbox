@@ -22,7 +22,7 @@ endif
 
 help:
 	@printf "\n"
-	@printf "  Netbox — local network stability monitor\n\n"
+	@printf "  Netbox - local network stability monitor\n\n"
 	@printf "  Getting started\n"
 	@printf "    make setup            First-time install, folders, and local env\n"
 	@printf "    make run              Backend API + Vite dashboard (hot reload)\n\n"

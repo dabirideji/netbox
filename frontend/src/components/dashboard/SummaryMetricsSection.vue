@@ -15,7 +15,7 @@ defineProps<{
     <div class="summary-grid">
       <article class="metric-card">
         <span>Samples</span>
-        <strong>{{ sampleCount ?? '—' }}</strong>
+        <strong>{{ sampleCount ?? '-' }}</strong>
       </article>
       <article class="metric-card">
         <span>Gateway latency</span>

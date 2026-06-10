@@ -14,7 +14,7 @@ describe('format helpers', () => {
   });
 
   it('formats metrics', () => {
-    expect(formatMs(null)).toBe('—');
+    expect(formatMs(null)).toBe('-');
     expect(formatMs(12.345)).toBe('12.3ms');
     expect(formatPct(9)).toBe('9.0%');
   });

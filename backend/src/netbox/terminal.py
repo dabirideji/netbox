@@ -27,7 +27,7 @@ def render_dashboard(summary: dict[str, Any], config: MonitorConfig) -> None:
         f"{dim('Elapsed')} {elapsed}  {dim('Remaining')} {remaining}"
     )
     print()
-    print(f"{color_for(status)(symbol_for(status))} {color_for(status)(status.upper())} — {summary['diagnosis']}")
+    print(f"{color_for(status)(symbol_for(status))} {color_for(status)(status.upper())} - {summary['diagnosis']}")
     print()
     print(
         f"{pad('Component', 20)} {pad('Status', 13)} {pad('Last', 10)} {pad('Loss', 8)} "
@@ -74,7 +74,7 @@ def format_pct(value: float) -> str:
 
 
 def format_ms(value: float | None) -> str:
-    return "—" if value is None else f"{value:.1f}ms"
+    return "-" if value is None else f"{value:.1f}ms"
 
 
 def color_for(status: str) -> Any:

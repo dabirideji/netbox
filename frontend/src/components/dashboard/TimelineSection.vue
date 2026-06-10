@@ -159,10 +159,10 @@ const emit = defineEmits<{
             {{
               latestHistoryPoint
                 ? `${formatMs(latestHistoryPoint.avgLatencyMs)} · ${formatPct(latestHistoryPoint.failurePct ?? 0)} loss`
-                : '—'
+                : '-'
             }}
           </span>
-          <span>Worst {{ activePoints.length ? worstHistoryLabel : '—' }}</span>
+          <span>Worst {{ activePoints.length ? worstHistoryLabel : '-' }}</span>
           <span>{{ activePoints.length }} points{{ isRangeActive ? ' in range' : '' }}</span>
         </div>
       </div>

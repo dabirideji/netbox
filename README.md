@@ -61,7 +61,7 @@ Defaults live in `config/*.json`. Runtime values load from `.env` (local, gitign
 | `config/targets.json` | Default external ping targets |
 | `config/speed.json` | NDT7 speed-test policy |
 | `config/security.json` | Bind allow-list and security headers |
-| `.env.example` | Committed template — `make setup` copies this to `.env` |
+| `.env.example` | Committed template - `make setup` copies this to `.env` |
 | `.env` | Local development overrides (gitignored) |
 | `.env.production` | Production overrides when `NETBOX_ENV=production` (gitignored) |
 | `.env.local` | Private secrets and machine-specific overrides (gitignored) |
@@ -70,11 +70,11 @@ Optional Pexels wallpaper support proxies nature images through the backend. Set
 
 ## Dashboard features
 
-- **Live monitoring** — gateway and external ping checks with SSE updates
-- **History and incidents** — persisted timeline, target breakdown, and paginated incident log
-- **Speed tests** — user-initiated M-Lab NDT7 runs with policy limits
-- **Theme** — light, dark, or system preference (stored in browser localStorage)
-- **Wallpaper** — optional Pexels nature backgrounds with glass-style cards when enabled
+- **Live monitoring** - gateway and external ping checks with SSE updates
+- **History and incidents** - persisted timeline, target breakdown, and paginated incident log
+- **Speed tests** - user-initiated M-Lab NDT7 runs with policy limits
+- **Theme** - light, dark, or system preference (stored in browser localStorage)
+- **Wallpaper** - optional Pexels nature backgrounds with glass-style cards when enabled
 
 UI preferences such as collapsed dashboard sections sync to SQLite via `/api/preferences`.
 
@@ -101,9 +101,9 @@ After `make install`, you can also run `netbox` directly.
 
 ## Documentation
 
-- [`docs/API.md`](docs/API.md) — REST and SSE endpoints
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — system design and security
-- [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) — workflow, layout, and standards
+- [`docs/API.md`](docs/API.md) - REST and SSE endpoints
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) - system design and security
+- [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) - workflow, layout, and standards
 
 ## Authorship
 

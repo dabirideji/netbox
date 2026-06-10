@@ -62,13 +62,13 @@ const storedRunsLabel = computed(
 );
 
 const dailyLimitLabel = computed(() => {
-  if (!props.speedPolicy) return '—';
+  if (!props.speedPolicy) return '-';
   if (props.speedPolicy.dailyRunLimit <= 0) return 'Unlimited';
   return `${props.speedPolicy.runsLast24h}/${props.speedPolicy.dailyRunLimit}`;
 });
 
 const minIntervalLabel = computed(() => {
-  if (!props.speedPolicy) return '—';
+  if (!props.speedPolicy) return '-';
   if (props.speedPolicy.minIntervalMs <= 0) return 'None';
   return `${Math.round(props.speedPolicy.minIntervalMs / 60_000)} min`;
 });
@@ -161,7 +161,7 @@ const minIntervalLabel = computed(() => {
         <dl class="speed-policy-list">
           <div>
             <dt>Provider</dt>
-            <dd>{{ speedPolicy?.providerName ?? '—' }}</dd>
+            <dd>{{ speedPolicy?.providerName ?? '-' }}</dd>
           </div>
           <div>
             <dt>Daily limit</dt>

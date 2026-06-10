@@ -52,13 +52,13 @@ flowchart TB
     Terminal["Terminal"]
   end
 
-  subgraph Frontend["Frontend — Vue 3 + Pinia"]
+  subgraph Frontend["Frontend - Vue 3 + Pinia"]
     Dashboard["Dashboard<br/>charts · incidents · speed tests"]
     ApiClient["api.ts<br/>REST + SSE client"]
     Dashboard --> ApiClient
   end
 
-  subgraph Backend["Backend — Python"]
+  subgraph Backend["Backend - Python"]
     HTTPServer["HTTP server<br/>REST · SSE · static files"]
     Monitor["Monitor loop<br/>ping · summarize · persist"]
     HTTPServer --> Monitor
@@ -140,7 +140,7 @@ Development runs two processes with hot reload; production serves the built fron
 
 ```mermaid
 flowchart LR
-  subgraph Dev["Development — make run"]
+  subgraph Dev["Development - make run"]
     DevRunner["scripts/dev.py"]
     Vite["Vite dev server<br/>:5177"]
     BackendDev["Python backend<br/>:4177"]
@@ -149,7 +149,7 @@ flowchart LR
     Vite -->|"proxy /api · /events"| BackendDev
   end
 
-  subgraph Prod["Production — make run-prod / Docker"]
+  subgraph Prod["Production - make run-prod / Docker"]
     NetboxCLI["netbox / monitor.py"]
     ProdServer["Python HTTP server<br/>:4177"]
     Dist["frontend/dist"]

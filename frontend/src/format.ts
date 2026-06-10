@@ -90,11 +90,11 @@ export function formatDateTimePickerLabel(value: string): string {
 }
 
 export function formatMs(value: number | null): string {
-  return value == null ? '—' : `${value.toFixed(1)}ms`;
+  return value == null ? '-' : `${value.toFixed(1)}ms`;
 }
 
 export function formatMbps(value: number | null): string {
-  return value == null ? '—' : `${value.toFixed(1)} Mbps`;
+  return value == null ? '-' : `${value.toFixed(1)} Mbps`;
 }
 
 export function formatPct(value: number): string {
