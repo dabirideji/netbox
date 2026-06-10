@@ -68,7 +68,7 @@ def fetch_wallpaper() -> dict[str, Any]:
     if not isinstance(src, dict):
         raise ValueError("Pexels photo payload is invalid")
 
-    image_url = src.get("large2x") or src.get("landscape") or src.get("large") or src.get("original")
+    image_url = src.get("medium") or src.get("large") or src.get("landscape") or src.get("small")
     if not isinstance(image_url, str) or not image_url:
         raise ValueError("Pexels photo has no usable image URL")
 

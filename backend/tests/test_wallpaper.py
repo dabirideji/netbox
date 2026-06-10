@@ -48,7 +48,8 @@ def test_fetch_wallpaper_returns_image_url(monkeypatch: pytest.MonkeyPatch) -> N
                 "photographer": "Jane Doe",
                 "url": "https://www.pexels.com/photo/example/",
                 "src": {
-                    "large2x": "https://images.pexels.com/photos/example.jpeg",
+                    "large2x": "https://images.pexels.com/photos/example-large2x.jpeg",
+                    "medium": "https://images.pexels.com/photos/example-medium.jpeg",
                 },
             }
         ]
@@ -78,7 +79,7 @@ def test_fetch_wallpaper_returns_image_url(monkeypatch: pytest.MonkeyPatch) -> N
     assert "orientation=landscape" in request_url
     assert "query=" in request_url
     assert result == {
-        "url": "https://images.pexels.com/photos/example.jpeg",
+        "url": "https://images.pexels.com/photos/example-medium.jpeg",
         "photographer": "Jane Doe",
         "photoUrl": "https://www.pexels.com/photo/example/",
     }
