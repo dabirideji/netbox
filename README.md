@@ -47,7 +47,7 @@ frontend/                Vite + Vue dashboard
 frontend/public/         Static assets served by Vite (NDT7 workers)
 docs/                    API, architecture, and development notes
 scripts/dev.py           Hot-reload dev stack runner
-data/                    Local SQLite database (gitignored)
+data/                    Local SQLite database (gitignored; created on first backend start)
 ```
 
 ## Configuration

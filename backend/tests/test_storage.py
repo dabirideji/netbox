@@ -43,6 +43,29 @@ def sample(checked_at: int, ok: bool, latency_ms: float | None) -> dict[str, obj
     }
 
 
+def test_status_store_creates_database_when_missing(tmp_path: Path) -> None:
+    db_path = tmp_path / "nested" / "netbox.sqlite3"
+    assert not db_path.exists()
+    assert not db_path.parent.exists()
+
+    store = StatusStore(db_path)
+
+    try:
+        assert db_path.is_file()
+        tables = {
+            row[0]
+            for row in store.connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name"
+            ).fetchall()
+        }
+        assert "ping_results" in tables
+        assert "status_events" in tables
+        assert "speed_tests" in tables
+        assert "ui_preferences" in tables
+    finally:
+        store.close()
+
+
 def test_status_store_persists_history_points(tmp_path: Path) -> None:
     db_path = tmp_path / "status.sqlite3"
     store = StatusStore(db_path)
