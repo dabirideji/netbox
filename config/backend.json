@@ -1,0 +1,26 @@
+{
+  "server": {
+    "host": "127.0.0.1",
+    "port": 4177,
+    "staticDir": null
+  },
+  "monitor": {
+    "duration": null,
+    "interval": "1s",
+    "timeout": "900ms",
+    "latencyWarnMs": 150,
+    "failuresToDegrade": 1,
+    "failuresToDown": 3,
+    "highLatencyToDegrade": 2,
+    "recentWindow": 5,
+    "historyPoints": 90,
+    "retentionPoints": 86400,
+    "noClear": false
+  },
+  "storage": {
+    "dbPath": "data/netbox.sqlite3"
+  },
+  "network": {
+    "wifiName": ""
+  }
+}

@@ -1,0 +1,41 @@
+[project]
+name = "netbox"
+version = "1.0.0"
+description = "Terminal-first local network stability monitor with a compact web dashboard."
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+netbox = "netbox.cli:main"
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+  "pytest-cov>=5.0",
+  "ruff>=0.6",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.coverage.run]
+branch = true
+source = ["netbox"]
+omit = [
+  "src/netbox/__main__.py",
+  "src/netbox/terminal.py",
+]
+
+[tool.coverage.report]
+fail_under = 70
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]

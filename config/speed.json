@@ -1,0 +1,14 @@
+{
+  "enabled": true,
+  "provider": "mlab-ndt7",
+  "providerName": "Measurement Lab NDT7",
+  "privacyUrl": "https://www.measurementlab.net/privacy/",
+  "dataPolicyUrl": "https://www.measurementlab.net/privacy/",
+  "minIntervalMinutes": 0,
+  "dailyRunLimit": 0,
+  "historyLimit": 20,
+  "metadata": {
+    "client_name": "netbox",
+    "client_version": "1.0.0"
+  }
+}

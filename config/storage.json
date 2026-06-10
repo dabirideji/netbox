@@ -1,0 +1,9 @@
+{
+  "autoPrune": true,
+  "limits": {
+    "maxDatabaseBytes": 52428800,
+    "maxIncidents": 10000,
+    "maxPingSamples": 100000,
+    "maxSpeedTests": 500
+  }
+}

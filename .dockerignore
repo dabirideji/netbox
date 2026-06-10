@@ -1,0 +1,11 @@
+.git
+__pycache__
+*.pyc
+backend/.pytest_cache
+backend/.ruff_cache
+backend/coverage.xml
+backend/src/*.egg-info
+frontend/node_modules
+frontend/dist
+frontend/coverage
+.DS_Store

@@ -1,0 +1,14 @@
+{
+  "externalTargets": [
+    {
+      "host": "1.1.1.1",
+      "label": "Cloudflare DNS",
+      "scope": "external"
+    },
+    {
+      "host": "8.8.8.8",
+      "label": "Google DNS",
+      "scope": "external"
+    }
+  ]
+}
