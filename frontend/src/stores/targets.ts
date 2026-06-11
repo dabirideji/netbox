@@ -9,7 +9,10 @@ import {
 } from '../api';
 import { usePersonalisationStore } from './personalisation';
 import { compareTargetsByScopeThenLabel } from '../targetScope';
+import { defaultTargetColor, normalizeTargetColor, targetColor } from '../targetColors';
 import type { MonitorTarget, TargetPayload, TargetProtocol, TargetScope, TargetType } from '../types';
+
+export { targetColor };
 
 export const TARGET_PROTOCOLS: TargetProtocol[] = ['icmp', 'http', 'https', 'tcp', 'dns'];
 export const TARGET_TYPES: TargetType[] = ['host', 'website', 'api', 'port', 'dns'];
@@ -54,6 +57,7 @@ export interface TargetFormState {
   recordName: string;
   recordType: string;
   expectedValue: string;
+  color: string;
 }
 
 export const useTargetsStore = defineStore('targets', () => {
@@ -88,7 +92,7 @@ export const useTargetsStore = defineStore('targets', () => {
   }
 
   function resetForm(): void {
-    form.value = defaultTargetForm();
+    form.value = defaultTargetForm(targets.value.length);
     error.value = null;
   }
 
@@ -114,6 +118,7 @@ export const useTargetsStore = defineStore('targets', () => {
       recordName: stringValue(config.name, target.host),
       recordType: stringValue(config.recordType, 'A'),
       expectedValue: stringValue(config.expectedValue, ''),
+      color: targetColor(config, targets.value.findIndex((candidate) => candidate.id === target.id)),
     };
   }
 
@@ -190,7 +195,7 @@ export const useTargetsStore = defineStore('targets', () => {
   };
 });
 
-function defaultTargetForm(): TargetFormState {
+function defaultTargetForm(existingCount = 0): TargetFormState {
   const protocol: TargetProtocol = 'icmp';
   return {
     id: null,
@@ -212,11 +217,15 @@ function defaultTargetForm(): TargetFormState {
     recordName: 'example.com',
     recordType: 'A',
     expectedValue: '',
+    color: defaultTargetColor(existingCount),
   };
 }
 
 function formToPayload(value: TargetFormState): TargetPayload {
-  const config = protocolConfig(value);
+  const config = {
+    ...protocolConfig(value),
+    color: normalizeTargetColor(value.color, 0),
+  };
   return {
     label: value.label,
     type: value.type,

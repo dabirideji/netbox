@@ -169,16 +169,7 @@ onUnmounted(() => {
       :gateway-latency-ms="gateway?.lastLatencyMs ?? null"
       :worst-loss="worstLoss"
       :worst-jitter="worstJitter"
-    />
-
-    <TargetsConfigSection />
-
-    <LiveChecksSection
       :targets="summary?.targets ?? []"
-      :connection-state="connectionState"
-      :page="liveChecksPage"
-      :page-size="LIVE_CHECKS_PAGE_SIZE"
-      @update:page="setLiveChecksPage"
     />
 
     <TimelineSection
@@ -192,6 +183,16 @@ onUnmounted(() => {
       @set-last-hour="setLastHour"
       @set-today="setToday"
       @clear-range="clearRange"
+    />
+
+    <TargetsConfigSection />
+
+    <LiveChecksSection
+      :targets="summary?.targets ?? []"
+      :connection-state="connectionState"
+      :page="liveChecksPage"
+      :page-size="LIVE_CHECKS_PAGE_SIZE"
+      @update:page="setLiveChecksPage"
     />
 
     <SpeedTestSection

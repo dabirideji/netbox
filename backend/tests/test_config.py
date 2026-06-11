@@ -1,7 +1,14 @@
 import os
 from pathlib import Path
 
-from netbox.config import clean_env_value, load_default_target_seeds, load_env_file, load_env_files, resolve_project_path, target_to_arg
+from netbox.config import (
+    clean_env_value,
+    load_default_target_seeds,
+    load_env_file,
+    load_env_files,
+    resolve_project_path,
+    target_to_arg,
+)
 from netbox.targets import target_from_seed
 
 

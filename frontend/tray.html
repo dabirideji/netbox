@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Netbox Live Checks</title>
+    <script>
+      (function () {
+        var stored = localStorage.getItem('netbox-theme');
+        var preference = stored === 'light' || stored === 'dark' || stored === 'system' ? stored : 'dark';
+        var theme =
+          preference === 'system'
+            ? window.matchMedia('(prefers-color-scheme: dark)').matches
+              ? 'dark'
+              : 'light'
+            : preference;
+        document.documentElement.dataset.theme = theme;
+
+        var compactParam = new URLSearchParams(location.search).get('compact');
+        if (compactParam === '1' || compactParam === '0') {
+          localStorage.setItem('netbox-tray-compact', compactParam);
+        }
+        if (localStorage.getItem('netbox-tray-compact') === '1') {
+          document.documentElement.dataset.trayCompact = 'true';
+        }
+      })();
+    </script>
+  </head>
+  <body class="tray-shell">
+    <div id="tray-app"></div>
+    <script type="module" src="/src/tray/main.ts"></script>
+  </body>
+</html>

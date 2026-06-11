@@ -35,7 +35,12 @@ async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Promise<R
 
 function apiRequestError(action: string, status: number): Error {
   if (status === 502 || status === 503 || status === 504) {
-    return new Error('Backend unavailable. Start the monitor with make run.');
+    const desktop = typeof window !== 'undefined' && 'netboxDesktop' in window;
+    return new Error(
+      desktop
+        ? 'Backend unavailable. Restart Netbox from the tray menu or wait a moment.'
+        : 'Backend unavailable. Start the monitor with make run.',
+    );
   }
   return new Error(`${action} request failed: ${status}`);
 }

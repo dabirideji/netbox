@@ -1,4 +1,4 @@
-PYTHON ?= python3
+PYTHON = $(shell if [ -x "$(CURDIR)/.venv/bin/python" ]; then printf '%s/.venv/bin/python' '$(CURDIR)'; elif [ -f .dev/python-bin ]; then cat .dev/python-bin; elif command -v python3 >/dev/null 2>&1; then command -v python3; else printf 'python3'; fi)
 -include .env
 CODEX_NODE_DIR := $(HOME)/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin
 NPM ?= $(shell if [ -x "$(CODEX_NODE_DIR)/node" ] && [ -f "/opt/homebrew/lib/node_modules/npm/bin/npm-cli.js" ]; then printf '%s %s' "$(CODEX_NODE_DIR)/node" "/opt/homebrew/lib/node_modules/npm/bin/npm-cli.js"; else printf 'npm'; fi)
@@ -16,7 +16,7 @@ ifneq ($(wildcard $(CODEX_NODE_DIR)/node),)
 export PATH := $(CODEX_NODE_DIR):$(PATH)
 endif
 
-.PHONY: help setup setup-check setup-dirs setup-env seed-targets check-run install install-backend install-frontend build frontend-build run run-prod run-backend dev frontend-dev backend-test frontend-test test coverage lint db-shell clean clean-data docker-build docker-run
+.PHONY: help setup setup-check setup-dirs setup-env seed-targets ensure-ready install install-backend install-frontend install-electron build frontend-build run run-prod run-backend dev frontend-dev electron-dev electron-build-backend electron-package backend-test frontend-test test coverage lint db-shell clean clean-data docker-build docker-run
 
 .DEFAULT_GOAL := help
 
@@ -39,6 +39,10 @@ help:
 	@printf "    make run-prod         Build frontend, then serve from backend\n"
 	@printf "    make docker-build     Build the Docker image\n"
 	@printf "    make docker-run       Run the container on port $(PORT)\n\n"
+	@printf "  Desktop (Electron)\n"
+	@printf "    make electron-dev     Run the desktop shell against local backend\n"
+	@printf "    make electron-build-backend  Bundle Python backend with PyInstaller\n"
+	@printf "    make electron-package Build installers (.dmg, .exe, AppImage)\n\n"
 	@printf "  Data\n"
 	@printf "    make db-shell         Open the SQLite history database\n"
 	@printf "    make clean-data       Delete persisted local history\n"
@@ -57,7 +61,7 @@ setup: setup-check setup-dirs setup-env install seed-targets
 	@printf "  For production, copy .env.example to .env.production and adjust hosts.\n\n"
 
 setup-check:
-	@command -v $(PYTHON) >/dev/null 2>&1 || (printf "python3 is required but was not found in PATH.\n" && exit 1)
+	@bash scripts/ensure-python.sh
 	@command -v node >/dev/null 2>&1 || (printf "node is required but was not found in PATH.\n" && exit 1)
 	@command -v npm >/dev/null 2>&1 || (printf "npm is required but was not found in PATH.\n" && exit 1)
 
@@ -73,36 +77,57 @@ setup-env:
 seed-targets:
 	@$(PYTHON) backend/monitor.py seed
 
-check-run:
-	@test -d frontend/node_modules || (printf "\n  Missing frontend dependencies. Run:\n    make setup\n\n" && exit 1)
-	@$(PYTHON) -c "import netbox" 2>/dev/null || (printf "\n  Backend package unavailable. Run:\n    make setup\n\n" && exit 1)
+DB_FILE ?= data/netbox.sqlite3
+
+ensure-ready:
+	@needs=0; \
+	if [ ! -d frontend/node_modules ]; then needs=1; fi; \
+	if ! $(PYTHON) -c "import netbox" 2>/dev/null; then needs=1; fi; \
+	if ! $(PYTHON) -c "import dns.resolver" 2>/dev/null; then needs=1; fi; \
+	if [ ! -f "$(or $(NETBOX_DB_PATH),$(DB_FILE))" ]; then needs=1; fi; \
+	if [ "$$needs" = "1" ]; then \
+		printf "\n  First-time or incomplete setup detected. Running make setup...\n\n"; \
+		$(MAKE) setup; \
+	fi
 
 install: install-backend install-frontend
 
 install-backend:
-	cd backend && $(PYTHON) -m pip install -e ".[dev]"
+	@bash scripts/ensure-venv.sh
 
 install-frontend:
 	cd frontend && $(NPM) install
+
+install-electron:
+	cd electron && $(NPM) install
 
 build: frontend-build
 
 frontend-build:
 	cd frontend && $(NPM) run build
 
-run: check-run
+run: ensure-ready
 	$(PYTHON) -u scripts/dev.py --host $(HOST) --backend-port $(PORT) --frontend-port $(FRONTEND_PORT) -- $(ARGS)
 
-run-prod: build
+run-prod: ensure-ready build
 	$(PYTHON) backend/monitor.py --host $(HOST) --port $(PORT) $(ARGS)
 
-run-backend:
+run-backend: ensure-ready
 	$(PYTHON) backend/monitor.py --host $(HOST) --port $(PORT) $(ARGS)
 
 dev: run
 
 frontend-dev:
 	cd frontend && $(NPM) run dev -- --host $(HOST) --port $(FRONTEND_PORT)
+
+electron-dev: ensure-ready build install-electron
+	NETBOX_PROJECT_ROOT="$(CURDIR)" NETBOX_PYTHON="$(PYTHON)" cd electron && $(NPM) run dev
+
+electron-build-backend:
+	bash scripts/build-backend.sh
+
+electron-package:
+	bash scripts/package-desktop.sh
 
 backend-test:
 	cd backend && $(PYTHON) -m pytest --cov=netbox --cov-report=term-missing --cov-fail-under=70
@@ -126,7 +151,7 @@ db-shell:
 	sqlite3 data/netbox.sqlite3
 
 clean:
-	rm -rf frontend/dist frontend/coverage backend/.pytest_cache backend/coverage.xml backend/src/*.egg-info .dev
+	rm -rf frontend/dist frontend/coverage backend/.pytest_cache backend/coverage.xml backend/src/*.egg-info .dev dist-backend electron/dist electron/release
 	find . -type d -name __pycache__ -prune -exec rm -rf {} +
 
 clean-data:

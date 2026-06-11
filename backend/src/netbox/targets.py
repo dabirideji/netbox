@@ -14,6 +14,7 @@ VALID_TARGET_TYPES: set[str] = {"website", "api", "host", "port", "dns"}
 VALID_PROTOCOLS: set[str] = {"http", "https", "tcp", "icmp", "dns"}
 VALID_DNS_RECORDS = {"A", "AAAA", "CNAME", "MX", "TXT", "NS"}
 GROUP_RE = re.compile(r"^[\w .@()/_-]{1,64}$", re.UNICODE)
+HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 
 DEFAULT_INTERVAL_MS_BY_PROTOCOL: dict[TargetProtocol, int] = {
     "icmp": 1_000,
@@ -240,7 +241,24 @@ def merge_monitoring_config(config: dict[str, Any], raw_config: dict[str, Any]) 
     merged = dict(config)
     if "latencyWarnMs" in raw_config:
         merged["latencyWarnMs"] = normalize_duration_ms(raw_config["latencyWarnMs"], "latencyWarnMs", 100, 120_000)
+    if "color" in raw_config:
+        normalized_color = normalize_target_color(raw_config["color"])
+        if normalized_color:
+            merged["color"] = normalized_color
+        else:
+            merged.pop("color", None)
     return merged
+
+
+def normalize_target_color(value: Any) -> str | None:
+    """Validate an optional chart color stored in target config."""
+
+    if value is None or value == "":
+        return None
+    cleaned = str(value).strip()
+    if not HEX_COLOR_RE.match(cleaned):
+        raise ValueError("color must be a 6-digit hex value like #38bdf8")
+    return cleaned.lower()
 
 
 def target_to_api(target: Target) -> dict[str, Any]:
@@ -260,3 +278,11 @@ def repair_api_health_targets(targets: list[Target]) -> list[Target]:
         if normalized.config.get("url") != target.config.get("url"):
             repaired.append(normalized)
     return repaired
+
+
+def gateway_host_sync_payload(existing: Target | None, gateway: str) -> dict[str, Any] | None:
+    """Return a partial target update when the detected default gateway changes."""
+
+    if existing is None or existing.host == gateway:
+        return None
+    return {"host": gateway, "config": {**existing.config, "host": gateway}}

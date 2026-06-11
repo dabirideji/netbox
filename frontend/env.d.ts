@@ -3,6 +3,15 @@
 declare module '*.css';
 declare const __NETBOX_APP_NAME__: string;
 
+interface NetboxDesktopBridge {
+  desktop: true;
+  setTrayCompact?: (compact: boolean) => void;
+}
+
+interface Window {
+  netboxDesktop?: NetboxDesktopBridge;
+}
+
 declare module '@m-lab/ndt7' {
   interface Ndt7Callbacks {
     error?: (error: string | Error) => void;

@@ -3,9 +3,9 @@
 export const DASHBOARD_SECTION_IDS = [
   'hero',
   'summary',
+  'timeline',
   'targets',
   'liveChecks',
-  'timeline',
   'speedTest',
   'incidentLog',
   'systemRatios',
@@ -34,12 +34,12 @@ export type DashboardNavItem = {
   hint?: string;
 };
 
-/** Jump links for the sticky dashboard nav (hero is omitted — it is always at the top). */
+/** Jump links for the sticky dashboard nav (hero is omitted - it is always at the top). */
 export const DASHBOARD_NAV_ITEMS: DashboardNavItem[] = [
   { id: 'summary', label: 'Metrics' },
+  { id: 'timeline', label: 'Timeline' },
   { id: 'targets', label: 'Sources', hint: 'Add links and endpoints to monitor' },
   { id: 'liveChecks', label: 'Live checks' },
-  { id: 'timeline', label: 'Timeline' },
   { id: 'speedTest', label: 'Speed test' },
   { id: 'incidentLog', label: 'Incidents' },
   { id: 'systemRatios', label: 'Storage' },

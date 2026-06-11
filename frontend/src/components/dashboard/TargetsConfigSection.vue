@@ -16,6 +16,7 @@ import {
   TARGET_SCOPES,
   TARGET_TYPES,
   usePersonalisationStore,
+  targetColor,
   useTargetsStore,
 } from '../../stores';
 import {
@@ -308,6 +309,21 @@ watch(
             <span>Timeout ms</span>
             <input v-model.number="form.timeoutMs" required type="number" min="100" max="60000" step="100" />
           </label>
+
+          <label class="field field--color">
+            <span>Chart color</span>
+            <div class="color-input">
+              <input v-model="form.color" type="color" aria-label="Chart color picker" />
+              <input
+                v-model="form.color"
+                type="text"
+                pattern="^#[0-9a-fA-F]{6}$"
+                maxlength="7"
+                spellcheck="false"
+                placeholder="#38bdf8"
+              />
+            </div>
+          </label>
         </div>
 
         <div class="target-form__protocol">
@@ -435,6 +451,11 @@ watch(
                   @click="toggleTarget(target.id)"
                 >
                   <span class="target-item__summary">
+                    <span
+                      class="target-item__color"
+                      :style="{ backgroundColor: targetColor(target.config, sortedTargets.findIndex((entry) => entry.id === target.id)) }"
+                      aria-hidden="true"
+                    />
                     <strong class="target-item__label">{{ target.label }}</strong>
                     <span class="target-item__badges">
                       <span class="target-item__badge target-item__badge--scope">{{ targetScopeLabel(target.scope) }}</span>

@@ -10,10 +10,11 @@ from typing import Any
 
 from netbox.checks import run_check
 from netbox.models import MonitorConfig, NetworkIdentity, Target
+from netbox.network import detect_default_gateway
 from netbox.speed import ONE_DAY_MS, normalize_speed_test, speed_policy
 from netbox.storage import DEFAULT_STORAGE_CONFIG, StatusStore
 from netbox.summary import capture_events, summarize
-from netbox.targets import target_to_api
+from netbox.targets import gateway_host_sync_payload, target_to_api
 from netbox.timeutils import now_ms
 
 
@@ -239,6 +240,25 @@ class MonitorState:
         if self.store:
             with self.lock:
                 self.targets = self.store.list_targets()
+
+    def sync_detected_gateway(self) -> bool:
+        """Refresh the auto-detected gateway target when the default route changes."""
+
+        if self.config.target_args or not self.store:
+            return False
+
+        gateway = detect_default_gateway()
+        if not gateway:
+            return False
+
+        store = self.store
+        existing = store.get_target("gateway")
+        sync_payload = gateway_host_sync_payload(existing, gateway)
+        if sync_payload is None:
+            return False
+
+        self.update_target("gateway", sync_payload)
+        return True
 
     def speed_tests(
         self,

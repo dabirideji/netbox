@@ -53,6 +53,10 @@ pnpm-debug.log*
 # Local app data
 data/
 .dev/
+dist-backend/
+electron/node_modules/
+electron/dist/
+electron/release/
 *.sqlite3
 *.sqlite3-*
 

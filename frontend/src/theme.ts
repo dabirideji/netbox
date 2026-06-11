@@ -54,3 +54,34 @@ export function themePreferenceLabel(preference: ThemePreference): string {
   if (preference === 'dark') return 'Dark';
   return 'System';
 }
+
+/** Keep document theme in sync with storage and system preference changes. */
+export function setupThemeSync(onChange?: (resolved: ResolvedTheme) => void): () => void {
+  const apply = (): ResolvedTheme => {
+    const resolved = applyThemePreference(getStoredThemePreference());
+    onChange?.(resolved);
+    return resolved;
+  };
+
+  apply();
+
+  const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+  const onSystemChange = (): void => {
+    if (getStoredThemePreference() === 'system') {
+      apply();
+    }
+  };
+  mediaQuery.addEventListener('change', onSystemChange);
+
+  const onStorage = (event: StorageEvent): void => {
+    if (event.key === THEME_STORAGE_KEY) {
+      apply();
+    }
+  };
+  window.addEventListener('storage', onStorage);
+
+  return () => {
+    mediaQuery.removeEventListener('change', onSystemChange);
+    window.removeEventListener('storage', onStorage);
+  };
+}

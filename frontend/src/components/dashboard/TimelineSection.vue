@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, ref } from 'vue';
 import {
   chartViewBox,
   liveTargetHistoryToSeverityPoints,
@@ -12,9 +12,11 @@ import {
 import { Button } from '../ui/button';
 import { DateTimeInput } from '../ui/date-time-input';
 import { formatClock, formatDate, formatMs, formatPct } from '../../format';
-import { targetServiceIcon } from '../../targetIcons';
-import type { HistoryPoint, TargetHistorySeries, TargetProtocol, TargetSummary, TargetType } from '../../types';
+import { buildTimelineOverviewSeries } from '../../timelineOverview';
+import type { HistoryPoint, TargetHistorySeries, TargetSummary } from '../../types';
 import DashboardSectionCard from './DashboardSectionCard.vue';
+import type { TargetTab } from '../../targetTabs';
+import TargetTabs from './TargetTabs.vue';
 
 const rangeFrom = defineModel<string>('rangeFrom', { default: '' });
 const rangeTo = defineModel<string>('rangeTo', { default: '' });
@@ -26,21 +28,10 @@ const props = defineProps<{
   targets: TargetSummary[];
 }>();
 
-interface TimelineTab {
-  id: string;
-  label: string;
-  type?: TargetType;
-  protocol?: TargetProtocol;
-  overview?: boolean;
-}
-
 const selectedTabId = ref<string>('overview');
-const tabsScrollRef = ref<HTMLElement | null>(null);
-const tabsFadeLeft = ref(false);
-const tabsFadeRight = ref(false);
 
-const tabs = computed((): TimelineTab[] => {
-  const overview: TimelineTab = { id: 'overview', label: 'Overview', overview: true };
+const tabs = computed((): TargetTab[] => {
+  const overview: TargetTab = { id: 'overview', label: 'Overview', overview: true };
   if (props.targetHistory.length) {
     return [
       overview,
@@ -62,50 +53,6 @@ const tabs = computed((): TimelineTab[] => {
     })),
   ];
 });
-
-function updateTabsScrollFades(): void {
-  const element = tabsScrollRef.value;
-  if (!element) {
-    tabsFadeLeft.value = false;
-    tabsFadeRight.value = false;
-    return;
-  }
-
-  const maxScroll = element.scrollWidth - element.clientWidth;
-  tabsFadeLeft.value = element.scrollLeft > 4;
-  tabsFadeRight.value = maxScroll > 4 && element.scrollLeft < maxScroll - 4;
-}
-
-let tabsResizeObserver: ResizeObserver | undefined;
-
-onMounted(() => {
-  void nextTick(updateTabsScrollFades);
-  tabsResizeObserver = new ResizeObserver(() => updateTabsScrollFades());
-  if (tabsScrollRef.value) {
-    tabsResizeObserver.observe(tabsScrollRef.value);
-  }
-});
-
-onUnmounted(() => {
-  tabsResizeObserver?.disconnect();
-});
-
-watch(
-  tabs,
-  (next) => {
-    if (selectedTabId.value !== 'overview' && !next.some((tab) => tab.id === selectedTabId.value)) {
-      selectedTabId.value = 'overview';
-    }
-
-    void nextTick(() => {
-      if (tabsScrollRef.value && tabsResizeObserver) {
-        tabsResizeObserver.observe(tabsScrollRef.value);
-      }
-      updateTabsScrollFades();
-    });
-  },
-  { immediate: true, flush: 'post' },
-);
 
 const activeTabLabel = computed(
   () => tabs.value.find((tab) => tab.id === selectedTabId.value)?.label ?? 'Overview',
@@ -129,8 +76,12 @@ const activePoints = computed((): SeverityPoint[] => {
   return [];
 });
 
+const isOverview = computed(() => selectedTabId.value === 'overview');
+const overviewSeries = computed(() =>
+  isOverview.value ? buildTimelineOverviewSeries(props.targets, props.targetHistory) : [],
+);
 const isRangeActive = computed(() => Boolean(rangeFrom.value || rangeTo.value));
-const chartSegments = computed(() => severitySegments(activePoints.value));
+const chartSegments = computed(() => (isOverview.value ? [] : severitySegments(activePoints.value)));
 const latestHistoryPoint = computed(() => activePoints.value.at(-1) ?? null);
 const worstHistoryPoint = computed(() =>
   activePoints.value.reduce<SeverityPoint | null>(
@@ -176,44 +127,7 @@ const emit = defineEmits<{
     </div>
     <p v-if="rangeError" class="range-error">{{ rangeError }}</p>
 
-    <div v-if="tabs.length > 1" class="timeline-tabs-shell horizontal-scroll-shell">
-      <div
-        class="horizontal-scroll-fade horizontal-scroll-fade--left"
-        :class="{ 'is-visible': tabsFadeLeft }"
-        aria-hidden="true"
-      />
-      <div
-        ref="tabsScrollRef"
-        class="timeline-tabs-scroll horizontal-scroll-track"
-        role="tablist"
-        aria-label="Timeline target"
-        @scroll="updateTabsScrollFades"
-      >
-        <button
-          v-for="tab in tabs"
-          :key="tab.id"
-          type="button"
-          role="tab"
-          class="timeline-tabs__button"
-          :class="{ 'is-active': selectedTabId === tab.id }"
-          :aria-selected="selectedTabId === tab.id"
-          @click="selectedTabId = tab.id"
-        >
-          <component
-            :is="targetServiceIcon(tab.type, tab.protocol, tab.overview)"
-            class="timeline-tabs__icon"
-            weight="bold"
-            aria-hidden="true"
-          />
-          {{ tab.label }}
-        </button>
-      </div>
-      <div
-        class="horizontal-scroll-fade horizontal-scroll-fade--right"
-        :class="{ 'is-visible': tabsFadeRight }"
-        aria-hidden="true"
-      />
-    </div>
+    <TargetTabs v-model="selectedTabId" :tabs="tabs" aria-label="Timeline target" />
 
     <div class="chart-card">
       <div class="chart-wrap">
@@ -223,40 +137,74 @@ const emit = defineEmits<{
           <span>Down</span>
         </div>
         <svg class="line-chart" :viewBox="chartViewBox" role="img" :aria-label="chartAriaLabel">
-          <path
-            v-for="(segment, index) in chartSegments"
-            :key="segment.d"
-            class="chart-line"
-            :class="segment.status"
-            :d="segment.d"
-          >
-            <title>{{ segmentTitle(index, segment.status) }}</title>
-          </path>
+          <template v-if="isOverview">
+            <path
+              v-for="series in overviewSeries"
+              :key="series.id"
+              class="chart-line chart-line--overview"
+              :style="{ stroke: series.color }"
+              :d="series.path"
+            >
+              <title>{{ series.label }}</title>
+            </path>
+          </template>
+          <template v-else>
+            <path
+              v-for="(segment, index) in chartSegments"
+              :key="segment.d"
+              class="chart-line chart-line--target"
+              :class="segment.status"
+              :d="segment.d"
+            >
+              <title>{{ segmentTitle(index, segment.status) }}</title>
+            </path>
+          </template>
         </svg>
       </div>
       <div class="chart-footer">
-        <div class="chart-legend" aria-label="Chart legend">
+        <div
+          v-if="isOverview"
+          class="chart-legend chart-legend--sources"
+          aria-label="Source colors"
+        >
+          <span v-for="series in overviewSeries" :key="series.id" class="chart-legend__source">
+            <i :style="{ backgroundColor: series.color }" />
+            {{ series.label }}
+          </span>
+        </div>
+        <div v-else class="chart-legend" aria-label="Chart legend">
           <span class="operational"><i></i>Up</span>
           <span class="degraded"><i></i>Degraded</span>
           <span class="down"><i></i>Down</span>
         </div>
         <div class="chart-details">
-          <span>
-            Latest
-            {{
-              latestHistoryPoint
-                ? `${formatMs(latestHistoryPoint.avgLatencyMs ?? null)} · ${formatPct(latestHistoryPoint.failurePct ?? 0)} loss`
-                : '-'
-            }}
-          </span>
-          <span>Worst {{ activePoints.length ? worstHistoryLabel : '-' }}</span>
-          <span>{{ activePoints.length }} points{{ isRangeActive ? ' in range' : '' }}</span>
+          <template v-if="isOverview">
+            <span>{{ overviewSeries.length }} sources</span>
+            <span>
+              {{
+                overviewSeries.reduce((total, series) => total + series.pointCount, 0)
+              }}
+              points{{ isRangeActive ? ' in range' : '' }}
+            </span>
+          </template>
+          <template v-else>
+            <span>
+              Latest
+              {{
+                latestHistoryPoint
+                  ? `${formatMs(latestHistoryPoint.avgLatencyMs ?? null)} · ${formatPct(latestHistoryPoint.failurePct ?? 0)} loss`
+                  : '-'
+              }}
+            </span>
+            <span>Worst {{ activePoints.length ? worstHistoryLabel : '-' }}</span>
+            <span>{{ activePoints.length }} points{{ isRangeActive ? ' in range' : '' }}</span>
+          </template>
         </div>
       </div>
-      <p v-if="!activePoints.length" class="empty">
+      <p v-if="isOverview ? !overviewSeries.length : !activePoints.length" class="empty">
         {{
-          selectedTabId === 'overview'
-            ? 'Waiting for persisted samples.'
+          isOverview
+            ? 'Waiting for source samples.'
             : `No samples for ${activeTabLabel} in this range yet.`
         }}
       </p>

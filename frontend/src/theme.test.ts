@@ -6,6 +6,7 @@ import {
   resolveTheme,
   setThemePreference,
   THEME_STORAGE_KEY,
+  setupThemeSync,
   themePreferenceLabel,
 } from './theme';
 
@@ -48,6 +49,17 @@ describe('theme', () => {
   it('defaults to dark when nothing is stored', () => {
     expect(getStoredThemePreference()).toBe('dark');
     expect(applyThemePreference(getStoredThemePreference())).toBe('dark');
+  });
+
+  it('keeps the document theme in sync through setupThemeSync', () => {
+    const cleanup = setupThemeSync();
+    expect(document.documentElement.dataset.theme).toBe('dark');
+
+    localStorage.setItem(THEME_STORAGE_KEY, 'light');
+    window.dispatchEvent(new StorageEvent('storage', { key: THEME_STORAGE_KEY }));
+    expect(document.documentElement.dataset.theme).toBe('light');
+
+    cleanup();
   });
 
   it('persists preference and applies resolved theme to the document root', () => {

@@ -16,6 +16,8 @@ from netbox.timeutils import now_ms
 CheckRunner = Callable[[Target], PingResult | dict[str, Any]]
 RenderCallback = Callable[[dict[str, Any]], None]
 
+GATEWAY_SYNC_INTERVAL_MS = 30_000
+
 
 class TargetScheduler:
     """Run enabled targets on their own interval without requiring Redis or workers."""
@@ -33,6 +35,7 @@ class TargetScheduler:
         self.checker = checker
         self.next_due: dict[str, int] = {}
         self.inflight: dict[Future[PingResult | dict[str, Any]], Target] = {}
+        self.last_gateway_sync_ms = 0
 
     def run(self, ends_at: int | None, render: RenderCallback | None = None) -> None:
         """Run checks until stopped or the optional deadline is reached."""
@@ -42,6 +45,10 @@ class TargetScheduler:
                 current_time = now_ms()
                 if ends_at is not None and current_time >= ends_at:
                     break
+
+                if current_time - self.last_gateway_sync_ms >= GATEWAY_SYNC_INTERVAL_MS:
+                    self.state.sync_detected_gateway()
+                    self.last_gateway_sync_ms = current_time
 
                 targets = self.state.active_targets()
                 target_map = {target.id: target for target in targets}

@@ -16,16 +16,21 @@ export function mergeTaxonomyValues(catalog: string[], ...extra: string[]): stri
   return uniqueSortedTaxonomy([...catalog, ...extra]);
 }
 
-export function taxonomyUsageCount<T extends { group: string } | { environment: string }>(
-  targets: T[],
+export interface TaxonomyTarget {
+  group: string;
+  environment: string;
+}
+
+export function taxonomyUsageCount(
+  targets: TaxonomyTarget[],
   field: 'group' | 'environment',
   value: string,
 ): number {
   return targets.filter((target) => target[field] === value).length;
 }
 
-export function canDeleteTaxonomyValue<T extends { group: string } | { environment: string }>(
-  targets: T[],
+export function canDeleteTaxonomyValue(
+  targets: TaxonomyTarget[],
   field: 'group' | 'environment',
   value: string,
 ): boolean {

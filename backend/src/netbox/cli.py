@@ -27,16 +27,17 @@ from netbox.config import (
 )
 from netbox.models import MonitorConfig, Target
 from netbox.network import build_targets, detect_default_gateway, detect_network_identity
+from netbox.paths import project_root
 from netbox.scheduler import TargetScheduler
 from netbox.server import StatusHandler, StatusServer
 from netbox.state import MonitorState
 from netbox.storage import StatusStore
-from netbox.targets import repair_api_health_targets, target_from_seed
+from netbox.targets import gateway_host_sync_payload, repair_api_health_targets, target_from_seed
 from netbox.terminal import print_startup, render_dashboard
 from netbox.timeutils import format_duration, now_ms, parse_duration
 from netbox.validation import validate_bind_host, validate_port
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
+PROJECT_ROOT = project_root()
 DEFAULT_STATIC_DIR = PROJECT_ROOT / "frontend" / "dist"
 DEFAULT_DB_PATH = PROJECT_ROOT / "data" / "netbox.sqlite3"
 
@@ -91,12 +92,36 @@ def build_bundled_seed_targets(config: MonitorConfig, gateway: str | None) -> li
     return [target_from_seed(target, config.interval_ms, config.timeout_ms) for target in seed_payloads]
 
 
+def database_exists(db_path: str) -> bool:
+    """Return True when the configured SQLite database file is already on disk."""
+
+    if str(db_path) == ":memory:":
+        return True
+    return Path(db_path).expanduser().resolve().is_file()
+
+
+def ensure_initialized(config: MonitorConfig) -> None:
+    """Seed bundled defaults when setup has not created the database yet."""
+
+    if database_exists(config.db_path):
+        return
+
+    print("Database not found; running first-time setup...", flush=True)
+    exit_code = seed_defaults(config)
+    if exit_code != 0:
+        raise ValueError("first-time setup failed to seed monitor targets")
+
+
 def apply_runtime_target_seeds(config: MonitorConfig, store: StatusStore, gateway: str | None) -> None:
     """Ensure CLI targets and the detected gateway exist without re-inserting bundled examples."""
 
     if config.target_args:
         payloads = [target.to_dict() for target in build_targets(config.target_args, gateway, [])]
     elif gateway:
+        existing = store.get_target("gateway")
+        sync_payload = gateway_host_sync_payload(existing, gateway)
+        if sync_payload:
+            store.update_target("gateway", sync_payload)
         payloads = [Target("gateway", gateway, "Local Gateway", "gateway").to_dict()]
     else:
         payloads = []
@@ -111,6 +136,7 @@ def apply_runtime_target_seeds(config: MonitorConfig, store: StatusStore, gatewa
 def run(config: MonitorConfig) -> int:
     """Start the HTTP server and execute the sampling loop until stopped."""
 
+    ensure_initialized(config)
     started_at = now_ms()
     gateway = detect_default_gateway()
     network = detect_network_identity(config.wifi_name)

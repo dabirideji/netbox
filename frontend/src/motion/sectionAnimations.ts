@@ -6,7 +6,7 @@ import { DASHBOARD_SECTION_IDS } from '../dashboardSections';
 const EASE_OUT = [0.22, 1, 0.36, 1] as const;
 const EASE_IN = [0.4, 0, 1, 1] as const;
 
-/** Snappy spring — fast settle, no bounce. */
+/** Snappy spring - fast settle, no bounce. */
 export const SPRING_SNAPPY = {
   type: 'spring' as const,
   stiffness: 460,

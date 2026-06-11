@@ -100,6 +100,17 @@ make docker-run
 
 After `make install`, you can also run `netbox` directly.
 
+## Desktop app
+
+Netbox can run as a tray-backed Electron app with a bundled Python backend (no cloud required).
+
+```bash
+make electron-dev        # local development shell
+make electron-package    # build installers
+```
+
+See [`docs/ELECTRON.md`](docs/ELECTRON.md) for packaging details and code-signing notes.
+
 ## Documentation
 
 - [`docs/API.md`](docs/API.md) - REST and SSE endpoints

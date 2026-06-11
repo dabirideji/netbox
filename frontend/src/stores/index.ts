@@ -10,6 +10,7 @@ export {
   TARGET_TYPES,
   defaultIntervalMs,
   defaultTimeoutMs,
+  targetColor,
 } from './targets';
 export {
   usePersonalisationStore,

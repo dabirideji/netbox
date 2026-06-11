@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 import { loadEnv } from 'vite';
 import vue from '@vitejs/plugin-vue';
+import { vueusePureAnnotationFix } from './vite/vueusePureAnnotationFix';
 
 interface FrontendConfig {
   app?: {
@@ -46,7 +47,7 @@ export default defineConfig(({ mode }) => {
 
   return {
     envDir: projectRoot,
-    plugins: [vue()],
+    plugins: [vue(), vueusePureAnnotationFix()],
     define: {
       __NETBOX_APP_NAME__: JSON.stringify(appName),
     },
@@ -59,6 +60,14 @@ export default defineConfig(({ mode }) => {
       proxy: {
         '/api': backendOrigin,
         '/events': backendOrigin,
+      },
+    },
+    build: {
+      rollupOptions: {
+        input: {
+          main: path.resolve(frontendRoot, 'index.html'),
+          tray: path.resolve(frontendRoot, 'tray.html'),
+        },
       },
     },
     test: {

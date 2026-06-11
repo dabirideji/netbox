@@ -162,7 +162,7 @@ function targetBarTitle(target: TargetSummary, point: TargetHistoryPoint): strin
                 :title="targetBarTitle(target, point)"
               />
             </div>
-            <div class="component-cell stat">{{ lastValue(target) }}</div>
+            <div class="component-cell stat" :title="lastValue(target)">{{ lastValue(target) }}</div>
             <div class="component-cell stat">{{ lastChecked(target) }}</div>
             <div class="component-cell stat">{{ formatPct(target.uptimePct) }}</div>
             <div class="component-cell stat">{{ incidentState(target) }}</div>

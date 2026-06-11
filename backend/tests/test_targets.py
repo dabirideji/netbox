@@ -1,4 +1,11 @@
-from netbox.targets import default_interval_ms, default_timeout_ms, normalize_target_payload
+import pytest
+
+from netbox.models import Target
+from netbox.targets import (
+    default_interval_ms,
+    gateway_host_sync_payload,
+    normalize_target_payload,
+)
 
 
 def test_default_interval_ms_for_website_protocols() -> None:
@@ -76,3 +83,41 @@ def test_normalize_target_payload_keeps_explicit_api_path() -> None:
     )
 
     assert target.config["url"] == "https://api.example.com/v1/status"
+
+
+def test_normalize_target_payload_stores_chart_color() -> None:
+    target = normalize_target_payload(
+        {
+            "label": "DNS",
+            "protocol": "icmp",
+            "config": {"host": "1.1.1.1", "color": "#AABBCC"},
+        }
+    )
+
+    assert target.config["color"] == "#aabbcc"
+
+
+def test_normalize_target_payload_rejects_invalid_chart_color() -> None:
+    with pytest.raises(ValueError, match="color must be"):
+        normalize_target_payload(
+            {
+                "label": "DNS",
+                "protocol": "icmp",
+                "config": {"host": "1.1.1.1", "color": "blue"},
+            }
+        )
+
+
+def test_gateway_host_sync_payload_updates_when_host_changes() -> None:
+    existing = Target("gateway", "10.10.7.1", "Local Gateway", "gateway", config={"host": "10.10.7.1"})
+
+    payload = gateway_host_sync_payload(existing, "192.168.18.1")
+
+    assert payload == {"host": "192.168.18.1", "config": {"host": "192.168.18.1"}}
+
+
+def test_gateway_host_sync_payload_is_noop_when_host_matches() -> None:
+    existing = Target("gateway", "192.168.18.1", "Local Gateway", "gateway", config={"host": "192.168.18.1"})
+
+    assert gateway_host_sync_payload(existing, "192.168.18.1") is None
+    assert gateway_host_sync_payload(None, "192.168.18.1") is None
