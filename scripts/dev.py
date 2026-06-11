@@ -47,6 +47,8 @@ def main() -> int:
     print("  Press Ctrl+C to stop both processes.")
     print(flush=True)
 
+    assert_backend_port_available(args.host, args.backend_port)
+
     frontend = start_frontend(args.host, args.frontend_port, args.backend_port)
     backend = start_backend(args.host, args.backend_port, backend_args)
     last_signature = backend_signature()
@@ -76,10 +78,13 @@ def main() -> int:
                 last_signature = signature
                 backend_started_at = time.monotonic()
             elif backend.poll() is not None:
-                print("Backend monitor exited; restarting...", file=sys.stderr, flush=True)
-                backend = restart_backend(args.host, args.backend_port, backend_args, backend)
-                last_signature = backend_signature()
-                backend_started_at = time.monotonic()
+                code = backend.returncode or 1
+                print(
+                    f"Backend monitor exited with code {code}; not restarting.",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                return code
     finally:
         stop_process(backend)
         stop_process(frontend)
@@ -104,6 +109,9 @@ def restart_backend(
 
     stop_process(process)
     wait_for_port_free(host, port)
+    if port_is_open(host, port):
+        print_port_conflict(host, port)
+        raise SystemExit(1)
     return start_backend(host, port, extra_args)
 
 
@@ -225,6 +233,46 @@ def port_is_open(host: str, port: int) -> bool:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.settimeout(0.2)
         return sock.connect_ex((host, port)) == 0
+
+
+def describe_port_conflict(host: str, port: int) -> str:
+    """Return a short description of which process is listening on the backend port."""
+
+    try:
+        result = subprocess.run(
+            ["lsof", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        lines = [line for line in result.stdout.splitlines() if line.strip()]
+        if len(lines) > 1:
+            return "\n".join(lines)
+    except FileNotFoundError:
+        pass
+
+    return f"Port {port} is already in use on {host}."
+
+
+def print_port_conflict(host: str, port: int) -> None:
+    """Print a helpful message when the backend port is unavailable."""
+
+    print(describe_port_conflict(host, port), file=sys.stderr)
+    print(
+        f"\nStop the process using port {port}, then run make run again.",
+        file=sys.stderr,
+    )
+    print(f"Example: lsof -ti tcp:{port} | xargs kill", file=sys.stderr)
+
+
+def assert_backend_port_available(host: str, port: int) -> None:
+    """Fail fast when another process is already bound to the backend port."""
+
+    if not port_is_open(host, port):
+        return
+
+    print_port_conflict(host, port)
+    raise SystemExit(1)
 
 
 def wait_for_port_free(host: str, port: int, timeout: float = 5.0) -> None:

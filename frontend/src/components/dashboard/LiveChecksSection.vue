@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { PhDotsSixVertical, PhStar } from '@phosphor-icons/vue';
+import { PhDotsSixVertical, PhPause, PhPlay, PhSpinner, PhStar } from '@phosphor-icons/vue';
 import { computed, TransitionGroup, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import { Pagination } from '../ui/pagination';
@@ -30,7 +30,7 @@ const emit = defineEmits<{
 
 const targetsStore = useTargetsStore();
 const alertsStore = useAlertsStore();
-const { isReordering, favoritingId } = storeToRefs(targetsStore);
+const { isReordering, favoritingId, pausingId } = storeToRefs(targetsStore);
 
 const isReconnecting = computed(() => isReconnectingState(props.connectionState));
 
@@ -110,6 +110,14 @@ function toggleFavorite(target: TargetSummary): void {
 function isFavoriting(targetId: string): boolean {
   return favoritingId.value === targetId;
 }
+
+function isPausing(targetId: string): boolean {
+  return pausingId.value === targetId;
+}
+
+function togglePaused(target: TargetSummary): void {
+  void targetsStore.setTargetEnabled(target.id, !target.enabled);
+}
 </script>
 
 <template>
@@ -131,7 +139,7 @@ function isFavoriting(targetId: string): boolean {
           <div class="components-grid__head" aria-hidden="true">
             <span class="components-grid__drag" />
             <span>Target</span>
-            <span>IP</span>
+            <span>IP/HOST</span>
             <span>Protocol</span>
             <span>Status</span>
             <span>Availability</span>
@@ -152,7 +160,10 @@ function isFavoriting(targetId: string): boolean {
               v-for="target in displayTargets"
               :key="target.id"
               class="component-row"
-              :class="{ 'is-dragging': draggingId === target.id }"
+              :class="{
+                'is-dragging': draggingId === target.id,
+                'is-paused': !target.enabled,
+              }"
               :data-reorder-id="target.id"
             >
               <button
@@ -189,10 +200,37 @@ function isFavoriting(targetId: string): boolean {
             <div class="component-cell component-cell--ip stat">{{ target.host }}</div>
             <div class="component-cell component-cell--protocol stat">{{ target.protocol.toUpperCase() }}</div>
             <div class="component-cell component-cell--status">
-              <span class="status" :class="target.currentStatus">
-                <span class="dot"></span>
-                {{ target.currentStatus }}
-              </span>
+              <div class="live-check-status">
+                <button
+                  type="button"
+                  class="live-check-status__toggle"
+                  :class="target.enabled ? 'is-pause' : 'is-resume'"
+                  :disabled="isPausing(target.id)"
+                  :aria-label="
+                    target.enabled
+                      ? `Pause monitoring for ${target.label}`
+                      : `Resume monitoring for ${target.label}`
+                  "
+                  @click.stop="togglePaused(target)"
+                >
+                  <PhSpinner
+                    v-if="isPausing(target.id)"
+                    class="live-check-status__spinner"
+                    weight="bold"
+                    aria-hidden="true"
+                  />
+                  <PhPause v-else-if="target.enabled" weight="fill" aria-hidden="true" />
+                  <PhPlay v-else weight="fill" aria-hidden="true" />
+                </button>
+                <span v-if="!target.enabled" class="status unknown">
+                  <span class="dot" aria-hidden="true" />
+                  paused
+                </span>
+                <span v-else class="status" :class="target.currentStatus">
+                  <span class="dot" aria-hidden="true" />
+                  {{ target.currentStatus }}
+                </span>
+              </div>
             </div>
             <div
               class="component-cell component-cell--history history"
@@ -215,8 +253,10 @@ function isFavoriting(targetId: string): boolean {
               <LiveCheckRowActions
                 :target="target"
                 :favoriting="isFavoriting(target.id)"
+                :pausing="isPausing(target.id)"
                 @set-alert="openAlertModal(target)"
                 @toggle-favorite="toggleFavorite(target)"
+                @toggle-paused="togglePaused(target)"
               />
             </div>
             </article>

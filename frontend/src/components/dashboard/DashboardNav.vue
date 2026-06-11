@@ -102,7 +102,9 @@ async function jumpToSection(sectionId: DashboardSectionId): Promise<void> {
       class="horizontal-scroll-fade horizontal-scroll-fade--left"
       :class="{ 'is-visible': navFadeLeft }"
       aria-hidden="true"
-    />
+    >
+      <span class="horizontal-scroll-fade__ellipsis">…</span>
+    </div>
     <nav
       ref="navScrollRef"
       class="dashboard-nav horizontal-scroll-track"
@@ -127,7 +129,9 @@ async function jumpToSection(sectionId: DashboardSectionId): Promise<void> {
       class="horizontal-scroll-fade horizontal-scroll-fade--right"
       :class="{ 'is-visible': navFadeRight }"
       aria-hidden="true"
-    />
+    >
+      <span class="horizontal-scroll-fade__ellipsis">…</span>
+    </div>
     </div>
   </div>
 </template>

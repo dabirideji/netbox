@@ -1,16 +1,18 @@
 <script setup lang="ts">
-import { PhBell, PhDotsThreeVertical, PhSpinner, PhStar } from '@phosphor-icons/vue';
+import { PhBell, PhDotsThreeVertical, PhPause, PhPlay, PhSpinner, PhStar } from '@phosphor-icons/vue';
 import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import type { TargetSummary } from '../../types';
 
 const props = defineProps<{
   target: TargetSummary;
   favoriting: boolean;
+  pausing: boolean;
 }>();
 
 const emit = defineEmits<{
   setAlert: [];
   toggleFavorite: [];
+  togglePaused: [];
 }>();
 
 const open = ref(false);
@@ -51,6 +53,12 @@ function onToggleFavorite(): void {
   if (props.favoriting) return;
   close();
   emit('toggleFavorite');
+}
+
+function onTogglePaused(): void {
+  if (props.pausing) return;
+  close();
+  emit('togglePaused');
 }
 
 function onDocumentClick(event: MouseEvent): void {
@@ -116,6 +124,18 @@ onUnmounted(() => {
         <button type="button" class="live-check-actions__item" role="menuitem" @click="onSetAlert">
           <PhBell weight="bold" aria-hidden="true" />
           <span>Set alert</span>
+        </button>
+        <button
+          type="button"
+          class="live-check-actions__item"
+          role="menuitem"
+          :disabled="pausing"
+          @click="onTogglePaused"
+        >
+          <PhSpinner v-if="pausing" class="live-check-actions__spinner" weight="bold" aria-hidden="true" />
+          <PhPlay v-else-if="!target.enabled" weight="bold" aria-hidden="true" />
+          <PhPause v-else weight="bold" aria-hidden="true" />
+          <span>{{ target.enabled ? 'Pause monitoring' : 'Resume monitoring' }}</span>
         </button>
         <button
           type="button"

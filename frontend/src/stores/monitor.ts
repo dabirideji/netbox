@@ -117,6 +117,17 @@ export const useMonitorStore = defineStore(
       };
     }
 
+    function setTargetEnabled(targetId: string, enabled: boolean): void {
+      if (!summary.value) return;
+
+      summary.value = {
+        ...summary.value,
+        targets: summary.value.targets.map((target) =>
+          target.id === targetId ? { ...target, enabled } : target,
+        ),
+      };
+    }
+
     function syncSummaryTargets(targets: MonitorTarget[]): void {
       if (!summary.value) return;
 
@@ -128,6 +139,7 @@ export const useMonitorStore = defineStore(
           if (!stored) return target;
           return {
             ...target,
+            enabled: stored.enabled,
             isFavorite: stored.isFavorite ?? false,
           };
         }),
@@ -144,6 +156,7 @@ export const useMonitorStore = defineStore(
       seedEventsFromSummary,
       reorderSummaryTargets,
       setTargetFavorite,
+      setTargetEnabled,
       syncSummaryTargets,
     };
   },

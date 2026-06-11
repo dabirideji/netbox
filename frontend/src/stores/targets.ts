@@ -80,6 +80,7 @@ export const useTargetsStore = defineStore('targets', () => {
   const isTestingForm = ref(false);
   const isReordering = ref(false);
   const favoritingId = ref<string | null>(null);
+  const pausingId = ref<string | null>(null);
   const error = ref<string | null>(null);
 
   const isEditing = computed(() => form.value.id !== null);
@@ -202,6 +203,33 @@ export const useTargetsStore = defineStore('targets', () => {
     targets.value = targets.value.map((candidate) => (candidate.id === target.id ? target : candidate));
   }
 
+  async function setTargetEnabled(targetId: string, enabled: boolean): Promise<boolean> {
+    pausingId.value = targetId;
+    error.value = null;
+
+    const previous = targets.value.find((target) => target.id === targetId);
+    if (previous) {
+      upsertTarget({ ...previous, enabled });
+      useMonitorStore().setTargetEnabled(targetId, enabled);
+    }
+
+    try {
+      const response = await patchTarget(targetId, { enabled });
+      upsertTarget(response.target);
+      useMonitorStore().setTargetEnabled(targetId, response.target.enabled);
+      return true;
+    } catch (caught) {
+      if (previous) {
+        upsertTarget(previous);
+        useMonitorStore().setTargetEnabled(targetId, previous.enabled);
+      }
+      error.value = caught instanceof Error ? caught.message : 'Unable to update target monitoring';
+      return false;
+    } finally {
+      pausingId.value = null;
+    }
+  }
+
   async function setTargetFavorite(targetId: string, favorite: boolean): Promise<boolean> {
     favoritingId.value = targetId;
     error.value = null;
@@ -266,6 +294,7 @@ export const useTargetsStore = defineStore('targets', () => {
     isTestingForm,
     isReordering,
     favoritingId,
+    pausingId,
     error,
     loadTargets,
     applyTargets,
@@ -276,6 +305,7 @@ export const useTargetsStore = defineStore('targets', () => {
     removeTarget,
     reorderTargets,
     setTargetFavorite,
+    setTargetEnabled,
     runCheckNow,
   };
 });

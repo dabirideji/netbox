@@ -126,6 +126,18 @@ def test_ensure_initialized_is_noop_when_database_exists(tmp_path: Path, capsys)
     assert "example-website" not in after
 
 
+def test_apply_runtime_target_seeds_does_not_insert_missing_gateway(tmp_path: Path) -> None:
+    db_path = tmp_path / "netbox.sqlite3"
+    config = parse_args(["--db-path", str(db_path)])
+
+    store = StatusStore(str(db_path))
+    try:
+        apply_runtime_target_seeds(config, store, gateway="192.168.1.1")
+        assert store.list_targets() == []
+    finally:
+        store.close()
+
+
 def test_apply_runtime_target_seeds_does_not_restore_deleted_bundled_targets(tmp_path: Path) -> None:
     db_path = tmp_path / "netbox.sqlite3"
     config = parse_args(["--db-path", str(db_path)])

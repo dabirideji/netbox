@@ -113,30 +113,26 @@ def ensure_initialized(config: MonitorConfig) -> None:
 
 
 def apply_runtime_target_seeds(config: MonitorConfig, store: StatusStore, gateway: str | None) -> None:
-    """Ensure CLI targets and the detected gateway exist without re-inserting bundled examples."""
+    """Apply explicit CLI targets and sync an existing gateway without inserting bundled defaults."""
 
     if config.target_args:
         payloads = [target.to_dict() for target in build_targets(config.target_args, gateway, [])]
-    elif gateway:
-        existing = store.get_target("gateway")
-        sync_payload = gateway_host_sync_payload(existing, gateway)
-        if sync_payload:
-            store.update_target("gateway", sync_payload)
-        payloads = [Target("gateway", gateway, "Local Gateway", "gateway").to_dict()]
-    else:
-        payloads = []
-
-    if not payloads:
+        runtime_targets = [target_from_seed(target, config.interval_ms, config.timeout_ms) for target in payloads]
+        store.seed_targets(runtime_targets)
         return
 
-    runtime_targets = [target_from_seed(target, config.interval_ms, config.timeout_ms) for target in payloads]
-    store.seed_targets(runtime_targets)
+    if not gateway:
+        return
+
+    existing = store.get_target("gateway")
+    sync_payload = gateway_host_sync_payload(existing, gateway)
+    if sync_payload:
+        store.update_target("gateway", sync_payload)
 
 
 def run(config: MonitorConfig) -> int:
     """Start the HTTP server and execute the sampling loop until stopped."""
 
-    ensure_initialized(config)
     started_at = now_ms()
     gateway = detect_default_gateway()
     network = detect_network_identity(config.wifi_name)
@@ -149,8 +145,8 @@ def run(config: MonitorConfig) -> int:
 
     if not targets:
         print(
-            "No monitor targets configured. Run `make run` to seed defaults, "
-            "or pass --target 192.168.1.1:Router:gateway",
+            "No monitor targets configured. Run `make setup` or `python backend/monitor.py seed` "
+            "to add defaults, or pass --target 192.168.1.1:Router:gateway",
             file=sys.stderr,
         )
         store.close()

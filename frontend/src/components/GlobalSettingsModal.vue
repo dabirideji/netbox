@@ -64,6 +64,7 @@ function formatBytes(bytes: number): string {
           </p>
 
           <template v-else>
+            <div class="settings-panel__body">
             <section class="settings-panel__section">
               <div class="settings-panel__section-head">
                 <h3>Default alert behavior</h3>
@@ -175,8 +176,9 @@ function formatBytes(bytes: number): string {
               <p v-else class="settings-panel__hint">Storage stats are loading…</p>
             </section>
 
-            <p v-if="error" class="target-error">{{ error }}</p>
-            <p v-if="message" class="settings-panel__success">{{ message }}</p>
+            <p v-if="error" class="target-error settings-panel__message">{{ error }}</p>
+            <p v-if="message" class="settings-panel__success settings-panel__message">{{ message }}</p>
+            </div>
 
             <div class="settings-panel__footer">
               <Button type="button" variant="ghost" size="sm" @click="settingsStore.close()">

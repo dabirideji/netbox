@@ -36,6 +36,10 @@ help:
 	@printf "  API        $(BACKEND_URL)\n\n"
 
 setup: ensure-ready
+	@if [ ! -f "$(or $(NETBOX_DB_PATH),$(DB_FILE))" ]; then \
+		printf "\n  Seeding default monitor targets...\n\n"; \
+		$(MAKE) seed-targets; \
+	fi
 	@printf "\n  Ready. Run make run to start the dev stack.\n\n"
 
 ensure-ready:
@@ -55,11 +59,6 @@ ensure-ready:
 		printf "\n  Installing backend dependencies...\n\n"; \
 		$(MAKE) install-backend; \
 	fi
-	@if [ ! -f "$(or $(NETBOX_DB_PATH),$(DB_FILE))" ]; then \
-		printf "\n  Seeding default monitor targets...\n\n"; \
-		$(MAKE) seed-targets; \
-	fi
-
 install-backend:
 	@bash scripts/ensure-venv.sh
 
