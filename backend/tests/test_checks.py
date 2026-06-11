@@ -3,8 +3,8 @@ import urllib.request
 
 import pytest
 
-from netbox import checks
-from netbox.models import PingResult, Target
+from netbox.core.models import PingResult, Target
+from netbox.probes import checks
 
 
 def test_http_check_matches_status_and_keyword(monkeypatch: pytest.MonkeyPatch) -> None:

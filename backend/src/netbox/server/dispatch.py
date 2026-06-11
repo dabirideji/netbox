@@ -7,7 +7,7 @@ from urllib.parse import ParseResult
 
 from netbox.responses import HttpStatus
 from netbox.server.query import parse_query, parse_target_route
-from netbox.wallpaper import fetch_wallpaper
+from netbox.server.wallpaper import fetch_wallpaper
 
 if TYPE_CHECKING:
     from netbox.server.handler import StatusHandler

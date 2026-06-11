@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from netbox.paths import project_root
+from netbox.util.paths import project_root
 
 PROJECT_ROOT = project_root()
 DEFAULT_CONFIG_DIR = PROJECT_ROOT / "config"

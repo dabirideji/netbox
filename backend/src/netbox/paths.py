@@ -1,14 +1,3 @@
-"""Resolve project and runtime paths for development and packaged builds."""
+"""Backward-compatible import path. Prefer :mod:`netbox.util.paths`."""
 
-from __future__ import annotations
-
-import sys
-from pathlib import Path
-
-
-def project_root() -> Path:
-    """Return the repository root in dev or the backend bundle directory when frozen."""
-
-    if getattr(sys, "frozen", False):
-        return Path(sys.executable).resolve().parent
-    return Path(__file__).resolve().parents[3]
+from netbox.util.paths import *  # noqa: F403

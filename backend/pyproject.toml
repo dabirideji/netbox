@@ -30,7 +30,7 @@ branch = true
 source = ["netbox"]
 omit = [
   "src/netbox/__main__.py",
-  "src/netbox/terminal.py",
+  "src/netbox/monitor/terminal.py",
 ]
 
 [tool.coverage.report]
