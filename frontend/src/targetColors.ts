@@ -24,9 +24,26 @@ export function normalizeTargetColor(value: unknown, fallbackIndex: number): str
   return TARGET_COLOR_PALETTE[paletteIndex];
 }
 
+/** Stable palette index for a source id when config has no explicit color. */
+export function stableTargetColorIndex(targetId: string): number {
+  let hash = 0;
+  for (let index = 0; index < targetId.length; index += 1) {
+    hash = (hash + targetId.charCodeAt(index) * (index + 1)) % 9973;
+  }
+  return hash;
+}
+
 /** Read a monitor source color from its config payload. */
 export function targetColor(config: Record<string, unknown> | undefined, fallbackIndex: number): string {
   return normalizeTargetColor(config?.color, fallbackIndex);
+}
+
+/** Resolve a source color from config, falling back to a stable id-based palette slot. */
+export function targetColorForSource(
+  config: Record<string, unknown> | undefined,
+  targetId: string,
+): string {
+  return normalizeTargetColor(config?.color, stableTargetColorIndex(targetId));
 }
 
 /** Default color for the next source being created. */

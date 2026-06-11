@@ -17,7 +17,7 @@ base_python() {
 
 BASE="$(base_python)"
 "$BASE" -c "import sys; raise SystemExit(0 if sys.version_info[:2] >= (3, 11) else 1)" || {
-  printf 'Python 3.11+ is required. Run make setup first.\n' >&2
+  printf 'Python 3.11+ is required. Run make run first.\n' >&2
   exit 1
 }
 

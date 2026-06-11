@@ -26,11 +26,29 @@ export function getStoredThemePreference(): ThemePreference {
   return DEFAULT_THEME_PREFERENCE;
 }
 
+function applyFavicon(theme: ResolvedTheme): void {
+  if (typeof document === 'undefined') {
+    return;
+  }
+
+  let link = document.querySelector<HTMLLinkElement>('link[data-netbox-icon]');
+  if (!link) {
+    link = document.createElement('link');
+    link.rel = 'icon';
+    link.type = 'image/png';
+    link.dataset.netboxIcon = 'true';
+    document.head.appendChild(link);
+  }
+
+  link.href = theme === 'dark' ? '/icons/white-32.png' : '/icons/black-32.png';
+}
+
 export function applyThemePreference(preference: ThemePreference): ResolvedTheme {
   const resolved = resolveTheme(preference);
 
   if (typeof document !== 'undefined') {
     document.documentElement.dataset.theme = resolved;
+    applyFavicon(resolved);
   }
 
   return resolved;

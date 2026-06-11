@@ -13,6 +13,7 @@ vi.mock('../../api', () => ({
   fetchPreferences: vi.fn().mockResolvedValue({ data: {} }),
   patchPreferences: vi.fn().mockResolvedValue({ data: {} }),
   patchTarget: vi.fn(),
+  previewTargetCheck: vi.fn(),
 }));
 
 function modalText(): string {
@@ -236,6 +237,45 @@ describe('TargetsConfigSection', () => {
 
     expect(usePersonalisationStore().targetGroups).toContain('Ops');
     expect(store.form.group).toBe('Ops');
+  });
+
+  it('opens the preview result modal when Test is clicked', async () => {
+    vi.mocked(api.previewTargetCheck).mockResolvedValue({
+      preview: true,
+      status: 'operational',
+      severity: 0,
+      result: {
+        id: 'dns-example',
+        host: 'example.com',
+        label: 'DNS Example',
+        scope: 'external',
+        type: 'dns',
+        protocol: 'dns',
+        ok: true,
+        latencyMs: 12,
+        checkedAt: 1_000,
+        durationMs: 10,
+        error: null,
+      },
+    });
+
+    wrapper = mount(TargetsConfigSection, {
+      global: { plugins: [pinia] },
+    });
+    const store = useTargetsStore();
+    store.form.label = 'DNS Example';
+    store.form.protocol = 'dns';
+    store.form.type = 'dns';
+    store.form.recordName = 'example.com';
+
+    const testButton = wrapper.findAll('button').find((button) => button.text() === 'Test');
+    expect(testButton).toBeTruthy();
+    await testButton!.trigger('click');
+    await flushPromises();
+
+    expect(api.previewTargetCheck).toHaveBeenCalled();
+    expect(modalText()).toContain('Check passed');
+    expect(modalText()).toContain('example.com');
   });
 
   it('submits a normalized target payload through the store', async () => {

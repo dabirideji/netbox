@@ -149,7 +149,7 @@ def run(config: MonitorConfig) -> int:
 
     if not targets:
         print(
-            "No monitor targets configured. Run `make setup` to seed defaults, "
+            "No monitor targets configured. Run `make run` to seed defaults, "
             "or pass --target 192.168.1.1:Router:gateway",
             file=sys.stderr,
         )

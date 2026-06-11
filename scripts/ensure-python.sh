@@ -118,7 +118,7 @@ install_python_linux() {
   esac
 
   err "Unsupported Linux distribution: ${PRETTY_NAME:-$distro}"
-  err "Install Python ${MIN_VERSION[0]}.${MIN_VERSION[1]}+ with your package manager, then run make setup again."
+  err "Install Python ${MIN_VERSION[0]}.${MIN_VERSION[1]}+ with your package manager, then run make run again."
   return 1
 }
 
@@ -135,7 +135,7 @@ install_python_windows() {
   fi
 
   err "Install Python from https://www.python.org/downloads/windows/"
-  err "Enable \"Add python.exe to PATH\" during installation, then run make setup again."
+  err "Enable \"Add python.exe to PATH\" during installation, then run make run again."
   return 1
 }
 
@@ -146,7 +146,7 @@ install_python() {
     MINGW* | MSYS* | CYGWIN*) install_python_windows ;;
     *)
       err "Unsupported operating system: $(uname -s)"
-      err "Install Python ${MIN_VERSION[0]}.${MIN_VERSION[1]}+ manually, then run make setup again."
+      err "Install Python ${MIN_VERSION[0]}.${MIN_VERSION[1]}+ manually, then run make run again."
       return 1
       ;;
   esac
@@ -166,7 +166,7 @@ main() {
 
   if ! confirm_install; then
     err "Python ${MIN_VERSION[0]}.${MIN_VERSION[1]}+ was not found in PATH."
-    err "Install Python from https://www.python.org/downloads/ and run make setup again."
+    err "Install Python from https://www.python.org/downloads/ and run make run again."
     exit 1
   fi
 
@@ -180,7 +180,7 @@ main() {
   fi
 
   err "Python installation finished, but python3 is still not available in PATH."
-  err "Open a new terminal or add Python to PATH, then run make setup again."
+  err "Open a new terminal or add Python to PATH, then run make run again."
   exit 1
 }
 

@@ -1,6 +1,26 @@
 /** Shared frontend API contracts returned by the Python backend. */
 
-export type Status = 'operational' | 'degraded' | 'down' | 'unknown';
+import type {
+  ApiErrorBody,
+  ConnectionStateKey,
+  IncidentWindowStatus,
+  MonitorStatus,
+  SpeedTestStatus,
+  Status,
+  StorageClearScope,
+  StreamEventType,
+} from './responses';
+
+export type {
+  ApiErrorBody,
+  ConnectionStateKey,
+  IncidentWindowStatus,
+  MonitorStatus,
+  SpeedTestStatus,
+  Status,
+  StorageClearScope,
+  StreamEventType,
+};
 
 export type TargetType = 'website' | 'api' | 'host' | 'port' | 'dns';
 export type TargetProtocol = 'http' | 'https' | 'tcp' | 'icmp' | 'dns';
@@ -33,6 +53,7 @@ export interface TargetSummary {
   group: string;
   environment: string;
   enabled: boolean;
+  isFavorite?: boolean;
   intervalMs: number;
   timeoutMs: number;
   config: Record<string, unknown>;
@@ -121,6 +142,8 @@ export interface MonitorTarget {
   intervalMs: number;
   timeoutMs: number;
   config: Record<string, unknown>;
+  sortOrder?: number;
+  isFavorite?: boolean;
 }
 
 export type TargetPayload = Partial<Omit<MonitorTarget, 'id' | 'config'>> & {
@@ -167,6 +190,19 @@ export interface LiveCheckResult {
   error: string | null;
 }
 
+/** Response from `/api/network/refresh`. */
+export interface NetworkRefreshResponse {
+  network: NetworkIdentity;
+}
+
+/** Response from `POST /api/targets/preview-check`. */
+export interface TargetPreviewCheckResponse {
+  preview: true;
+  result: LiveCheckResult;
+  status: Status;
+  severity: number;
+}
+
 export interface TargetResultsResponse {
   targetId: string;
   from: number | null;
@@ -207,7 +243,7 @@ export interface IncidentWindow {
   targetLabel: string;
   openedAt: number;
   resolvedAt: number | null;
-  status: 'open' | 'resolved';
+  status: IncidentWindowStatus;
   message: string;
 }
 
@@ -225,7 +261,7 @@ export interface SpeedTestResult {
   id: number;
   testedAt: number;
   provider: string;
-  status: 'completed' | 'failed';
+  status: SpeedTestStatus;
   downloadMbps: number | null;
   uploadMbps: number | null;
   latencyMs: number | null;
@@ -310,8 +346,6 @@ export interface StorageStats {
   };
 }
 
-export type StorageClearScope = 'incidents' | 'ping' | 'speedTests' | 'all';
-
 /** Response from `/api/storage` and `/api/storage/clear`. */
 export interface StorageStatsResponse extends StorageStats {}
 
@@ -330,9 +364,81 @@ export interface StorageClearResponse {
   stats: StorageStats;
 }
 
+/** Platform-wide alert defaults returned by `/api/settings/platform`. */
+export interface PlatformAlertDefaults {
+  defaultNotification: boolean;
+  defaultSound: boolean;
+  defaultEmail: boolean;
+  defaultEmailTo: string;
+  defaultOnDegraded: boolean;
+  defaultOnDown: boolean;
+  defaultCooldownMs: number;
+}
+
+export interface PlatformSettings {
+  alerts: PlatformAlertDefaults;
+}
+
+export interface PlatformSettingsResponse {
+  settings: PlatformSettings;
+}
+
+/** SMTP provider settings returned by `/api/alerts/smtp`. */
+export interface SmtpSettings {
+  provider: 'resend' | 'custom';
+  host: string;
+  port: number;
+  username: string;
+  fromEmail: string;
+  fromName: string;
+  useTls: boolean;
+  configured: boolean;
+  hasPassword: boolean;
+}
+
+/** Per-target alert rules returned by `/api/targets/{id}/alert`. */
+export interface TargetAlertRules {
+  targetId: string;
+  enabled: boolean;
+  notification: boolean;
+  sound: boolean;
+  email: boolean;
+  emailTo: string;
+  onDegraded: boolean;
+  onDown: boolean;
+  cooldownMs: number;
+  smtpConfigured: boolean;
+}
+
+/** Live alert payload broadcast over SSE when a configured channel fires. */
+export interface AlertNotification {
+  targetId: string;
+  targetLabel: string;
+  from: Status;
+  to: Status;
+  message: string;
+  channel: 'notification' | 'sound' | 'email';
+  at: number;
+  reminder?: boolean;
+}
+
+export interface SmtpSettingsResponse {
+  smtp: SmtpSettings;
+}
+
+export interface TargetAlertResponse {
+  alert: TargetAlertRules;
+}
+
+export interface SmtpTestResponse {
+  ok: boolean;
+  message: string;
+}
+
 /** Server-sent event payloads emitted by `/events`. */
 export type StreamPayload =
   | { type: 'status'; summary: StatusSummary }
   | { type: 'event'; event: StatusEvent }
   | { type: 'targets'; targets: MonitorTarget[] }
-  | { type: 'speedTest'; test: SpeedTestResult };
+  | { type: 'speedTest'; test: SpeedTestResult }
+  | { type: 'alert'; alert: AlertNotification };

@@ -1,39 +1,16 @@
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
-import { fetchPreferences, patchPreferences } from '../api';
+import { fetchPreferences, patchPreferences } from '../../api';
 import {
   createDefaultDashboardSectionsCollapsed,
-  DASHBOARD_SECTION_IDS,
   type DashboardSectionId,
   type DashboardSectionsCollapsedState,
-} from '../dashboardSections';
-import { mergeTaxonomyValues, uniqueSortedTaxonomy } from '../targetTaxonomy';
-import { debounce } from '../utils/schedule';
-import type { MonitorTarget } from '../types';
-import { PREFERENCE_KEYS, type TimelineRangePreference } from './preferenceKeys';
-
-const CACHE_TTL = 1000 * 60 * 10;
-
-function normalizeSectionsCollapsed(
-  value: Partial<DashboardSectionsCollapsedState> | null | undefined,
-): DashboardSectionsCollapsedState {
-  const defaults = createDefaultDashboardSectionsCollapsed();
-  if (!value || typeof value !== 'object') return defaults;
-
-  const next = { ...defaults };
-  for (const sectionId of DASHBOARD_SECTION_IDS) {
-    if (typeof value[sectionId] === 'boolean') {
-      next[sectionId] = value[sectionId];
-    }
-  }
-  return next;
-}
-
-function formatDateTimeInput(timestamp: number): string {
-  const date = new Date(timestamp);
-  const offsetMs = date.getTimezoneOffset() * 60_000;
-  return new Date(timestamp - offsetMs).toISOString().slice(0, 16);
-}
+} from '../../dashboardSections';
+import { mergeTaxonomyValues, uniqueSortedTaxonomy } from '../../targetTaxonomy';
+import type { MonitorTarget } from '../../types';
+import { debounce } from '../../utils/schedule';
+import { CACHE_TTL, formatDateTimeInput, normalizeSectionsCollapsed } from './helpers';
+import { PREFERENCE_KEYS, type TimelineRangePreference } from '../preferenceKeys';
 
 export const usePersonalisationStore = defineStore(
   'personalisation',

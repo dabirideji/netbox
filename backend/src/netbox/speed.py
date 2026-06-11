@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-VALID_SPEED_STATUSES = {"completed", "failed"}
+from netbox.responses import VALID_SPEED_STATUSES
+
 MAX_LABEL_LENGTH = 120
 MAX_ERROR_LENGTH = 240
 ONE_DAY_MS = 24 * 60 * 60 * 1000

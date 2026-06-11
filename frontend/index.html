@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="description" content="Compact local network status dashboard" />
     <title>Netbox</title>
+    <link rel="icon" type="image/png" href="/icons/black-32.png" data-netbox-icon="true" />
     <script>
       (function () {
         var key = 'netbox-theme';
@@ -17,6 +18,10 @@
               : 'light'
             : preference;
         document.documentElement.dataset.theme = theme;
+        var favicon = document.querySelector('link[data-netbox-icon]');
+        if (favicon) {
+          favicon.href = theme === 'dark' ? '/icons/white-32.png' : '/icons/black-32.png';
+        }
       })();
     </script>
   </head>

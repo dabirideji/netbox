@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { formatDate, formatDateTime, formatDuration, formatMs, formatPct, networkLabel, statusHeadline } from './format';
+import {
+  formatDate,
+  formatDateTime,
+  formatDuration,
+  formatMs,
+  formatPct,
+  isWifiNameHidden,
+  networkLabel,
+  statusHeadline,
+} from './format';
 
 describe('format helpers', () => {
   it('formats status headline', () => {
@@ -39,6 +48,13 @@ describe('format helpers', () => {
   it('explains macOS-hidden wifi names', () => {
     expect(networkLabel({ name: 'Wi-Fi (en0)', ssid: null, interface: 'en0', service: 'Wi-Fi' })).toBe(
       'Wi‑Fi name hidden by macOS',
+    );
+  });
+
+  it('detects when macOS likely hides the wifi name', () => {
+    expect(isWifiNameHidden({ name: 'Wi-Fi (en0)', ssid: null, interface: 'en0', service: 'Wi-Fi' })).toBe(true);
+    expect(isWifiNameHidden({ name: 'Office WiFi', ssid: 'Office WiFi', interface: 'en0', service: 'Wi-Fi' })).toBe(
+      false,
     );
   });
 });

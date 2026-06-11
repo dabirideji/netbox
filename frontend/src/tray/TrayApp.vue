@@ -1,31 +1,77 @@
 <script setup lang="ts">
-import { PhArrowsIn, PhArrowsOut } from '@phosphor-icons/vue';
-import { computed, onMounted, onUnmounted, ref } from 'vue';
-import { fetchStatus, subscribeStatus } from '../api';
+import { PhArrowsIn, PhArrowsOut, PhDotsSixVertical, PhX } from '@phosphor-icons/vue';
+import { computed, onMounted, onUnmounted, ref, TransitionGroup } from 'vue';
+import { fetchStatus, reorderTargets as reorderTargetsApi, subscribeStatus } from '../api';
+import { useTargetDragReorder } from '../composables/useTargetDragReorder';
 import { formatClock, formatMs } from '../format';
-import { isReconnectingState } from '../stores/monitor';
 import { targetServiceIcon } from '../targetIcons';
-import {
-  compareTargetsByScopeThenLabel,
-  shouldShowScopeHeader,
-  targetScopeLabel,
-} from '../targetScope';
+import { targetColorForSource } from '../targetColors';
+import { reorderTargetsByIds } from '../targetOrder';
 import { isTrayCompactEnabled, setTrayCompact } from '../trayCompact';
 import type { StatusSummary, TargetHistoryPoint, TargetSummary } from '../types';
+import { useTrayDrag } from './useTrayDrag';
 
 const summary = ref<StatusSummary | null>(null);
 const compact = ref(isTrayCompactEnabled());
-const connectionState = ref('connecting');
+const {
+  dragging: isDraggingTray,
+  onPointerDown: onTrayDragDown,
+  onPointerMove: onTrayDragMove,
+  onPointerUp: onTrayDragUp,
+  onPointerCancel: onTrayDragCancel,
+} = useTrayDrag();
 let eventSource: EventSource | undefined;
 
 const targets = computed(() => summary.value?.targets ?? []);
-const sortedTargets = computed(() => [...targets.value].sort(compareTargetsByScopeThenLabel));
-const isReconnecting = computed(() => isReconnectingState(connectionState.value));
-const overallStatus = computed(() => summary.value?.overallStatus ?? 'unknown');
+const sortedTargets = computed(() => targets.value);
+
+function reorderSummaryTargets(order: string[]): void {
+  if (!summary.value) return;
+
+  const reordered = reorderTargetsByIds(summary.value.targets, order);
+  if (reordered.length !== summary.value.targets.length) return;
+
+  summary.value = {
+    ...summary.value,
+    targets: reordered,
+  };
+}
+
+async function commitTargetReorder(order: string[]): Promise<void> {
+  if (!summary.value) return;
+
+  const previous = [...summary.value.targets];
+  reorderSummaryTargets(order);
+
+  try {
+    await reorderTargetsApi(order);
+  } catch (caught) {
+    summary.value = {
+      ...summary.value,
+      targets: previous,
+    };
+    throw caught;
+  }
+}
+
+const {
+  draggingId,
+  previewOrder,
+  isSettling,
+  isReordering,
+  onPointerDown,
+} = useTargetDragReorder({
+  orderedIds: () => sortedTargets.value.map((target) => target.id),
+  onReorder: commitTargetReorder,
+  disabled: () => isReordering.value,
+});
+
+const displayTargets = computed(() =>
+  reorderTargetsByIds(sortedTargets.value, previewOrder.value),
+);
 
 function applySummary(payload: StatusSummary): void {
   summary.value = payload;
-  connectionState.value = 'live';
 }
 
 function lastValue(target: TargetSummary): string {
@@ -35,6 +81,14 @@ function lastValue(target: TargetSummary): string {
 function toggleCompact(): void {
   compact.value = !compact.value;
   setTrayCompact(compact.value);
+}
+
+function closeTray(): void {
+  window.netboxDesktop?.hideTray?.();
+}
+
+function targetColorFor(target: TargetSummary): string {
+  return targetColorForSource(target.config, target.id);
 }
 
 function targetBarTitle(target: TargetSummary, point: TargetHistoryPoint): string {
@@ -47,7 +101,7 @@ onMounted(async () => {
   try {
     applySummary(await fetchStatus());
   } catch {
-    connectionState.value = 'offline';
+    // Status stream will retry on reconnect.
   }
 
   eventSource = subscribeStatus(
@@ -56,9 +110,7 @@ onMounted(async () => {
         applySummary(payload.summary);
       }
     },
-    () => {
-      connectionState.value = 'reconnecting';
-    },
+    () => {},
   );
 });
 
@@ -69,8 +121,16 @@ onUnmounted(() => {
 
 <template>
   <div class="tray-panel" :class="{ 'tray-panel--compact': compact }">
-    <header class="tray-panel__header" title="Drag to move">
-      <div class="tray-panel__header-title">
+    <header class="tray-panel__header">
+      <div
+        class="tray-panel__header-drag"
+        :class="{ 'is-dragging': isDraggingTray }"
+        title="Drag to reposition"
+        @pointerdown="onTrayDragDown"
+        @pointermove="onTrayDragMove"
+        @pointerup="onTrayDragUp"
+        @pointercancel="onTrayDragCancel"
+      >
         <svg class="tray-panel__drag" viewBox="0 0 12 16" aria-hidden="true">
           <circle cx="3.5" cy="3.5" r="1.1" fill="currentColor" />
           <circle cx="8.5" cy="3.5" r="1.1" fill="currentColor" />
@@ -79,15 +139,12 @@ onUnmounted(() => {
           <circle cx="3.5" cy="12.5" r="1.1" fill="currentColor" />
           <circle cx="8.5" cy="12.5" r="1.1" fill="currentColor" />
         </svg>
-        <div>
-          <p class="tray-panel__eyebrow">Live checks</p>
-          <h1 class="tray-panel__title">Netbox</h1>
-        </div>
+        <p class="tray-panel__eyebrow">Live checks</p>
       </div>
       <div class="tray-panel__header-actions">
         <button
           type="button"
-          class="tray-panel__mode"
+          class="tray-panel__icon-button"
           :aria-pressed="compact"
           :title="compact ? 'Switch to comfortable dock mode' : 'Switch to compact dock mode'"
           @click="toggleCompact"
@@ -96,29 +153,49 @@ onUnmounted(() => {
           <PhArrowsOut v-else weight="bold" aria-hidden="true" />
           <span class="sr-only">{{ compact ? 'Comfortable mode' : 'Compact mode' }}</span>
         </button>
-        <span class="tray-panel__status" :class="overallStatus">
-          <span class="dot" />
-          <span class="tray-panel__status-label">
-            {{ isReconnecting ? 'Reconnecting' : overallStatus }}
-          </span>
-        </span>
+        <button
+          type="button"
+          class="tray-panel__icon-button"
+          title="Close"
+          aria-label="Close"
+          @click="closeTray"
+        >
+          <PhX weight="bold" aria-hidden="true" />
+        </button>
       </div>
     </header>
 
     <p v-if="!sortedTargets.length" class="tray-panel__empty">No monitor targets configured yet.</p>
 
-    <div v-else class="tray-panel__list">
-      <template v-for="(target, index) in sortedTargets" :key="target.id">
-        <div
-          v-if="shouldShowScopeHeader(sortedTargets, index)"
-          class="tray-panel__scope"
-          role="presentation"
-        >
-          {{ targetScopeLabel(target.scope) }}
-        </div>
-
-        <article class="tray-row">
-          <div class="tray-row__main">
+    <TransitionGroup
+      v-else
+      name="tray-reorder"
+      tag="div"
+      class="tray-panel__list"
+      :class="{ 'is-reorder-settling': isSettling }"
+    >
+      <article
+        v-for="target in displayTargets"
+        :key="target.id"
+        class="tray-row"
+        :class="{ 'is-dragging': draggingId === target.id }"
+        :data-reorder-id="target.id"
+      >
+        <div class="tray-row__main">
+          <button
+            type="button"
+            class="target-drag-handle tray-row__drag"
+            :aria-label="`Reorder ${target.label}`"
+            :disabled="isReordering"
+            @pointerdown="onPointerDown(target.id, $event)"
+          >
+            <PhDotsSixVertical weight="bold" aria-hidden="true" />
+          </button>
+          <span
+            class="tray-row__color"
+            :style="{ backgroundColor: targetColorFor(target) }"
+            :aria-label="`${target.label} source color`"
+          />
             <component
               :is="targetServiceIcon(target.type, target.protocol)"
               class="tray-row__icon"
@@ -127,8 +204,8 @@ onUnmounted(() => {
             />
             <div class="tray-row__text">
               <strong>{{ target.label }}</strong>
-              <small v-if="!compact">{{ target.host }}</small>
             </div>
+            <span class="tray-row__ip">{{ target.host }}</span>
             <span class="tray-row__latency tray-row__latency--inline">{{ lastValue(target) }}</span>
             <span class="tray-row__status status" :class="target.currentStatus">
               <span class="dot" />
@@ -151,8 +228,7 @@ onUnmounted(() => {
             </div>
             <span class="tray-row__latency">{{ lastValue(target) }}</span>
           </div>
-        </article>
-      </template>
-    </div>
+      </article>
+    </TransitionGroup>
   </div>
 </template>

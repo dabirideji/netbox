@@ -7,7 +7,8 @@ from collections.abc import Callable
 from dataclasses import asdict
 from typing import Any
 
-from netbox.models import MonitorConfig, NetworkIdentity, Status, Target
+from netbox.models import MonitorConfig, NetworkIdentity, Target
+from netbox.responses import Status
 from netbox.timeutils import now_ms
 
 HTTPS_LATENCY_WARN_MS = 3_000.0
@@ -65,6 +66,7 @@ def summarize(
                 "group": target.group,
                 "environment": target.environment,
                 "enabled": target.enabled,
+                "isFavorite": target.is_favorite,
                 "intervalMs": target.interval_ms,
                 "timeoutMs": target.timeout_ms,
                 "latencyWarnMs": None if reachability else latency_warn_ms,

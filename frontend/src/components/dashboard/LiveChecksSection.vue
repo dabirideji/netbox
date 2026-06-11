@@ -1,16 +1,21 @@
 <script setup lang="ts">
-import { computed, watch } from 'vue';
+import { PhDotsSixVertical, PhStar } from '@phosphor-icons/vue';
+import { computed, TransitionGroup, watch } from 'vue';
+import { storeToRefs } from 'pinia';
 import { Pagination } from '../ui/pagination';
+import { useTargetDragReorder } from '../../composables/useTargetDragReorder';
 import { formatClock, formatDate, formatMs, formatPct } from '../../format';
+import { reorderTargetsByIds } from '../../targetOrder';
 import { isReconnectingState } from '../../stores/monitor';
+import { sortLiveCheckTargets } from '../../liveChecks';
+import { useTargetsStore } from '../../stores';
 import { targetServiceIcon } from '../../targetIcons';
-import {
-  compareTargetsByScopeThenLabel,
-  shouldShowScopeHeader,
-  targetScopeLabel,
-} from '../../targetScope';
+import { targetColorForSource } from '../../targetColors';
 import type { TargetHistoryPoint, TargetSummary } from '../../types';
 import DashboardSectionCard from './DashboardSectionCard.vue';
+import LiveCheckRowActions from './LiveCheckRowActions.vue';
+import TargetAlertModal from './TargetAlertModal.vue';
+import { useAlertsStore } from '../../stores/alerts';
 
 const props = defineProps<{
   targets: TargetSummary[];
@@ -23,13 +28,30 @@ const emit = defineEmits<{
   'update:page': [page: number];
 }>();
 
+const targetsStore = useTargetsStore();
+const alertsStore = useAlertsStore();
+const { isReordering, favoritingId } = storeToRefs(targetsStore);
+
 const isReconnecting = computed(() => isReconnectingState(props.connectionState));
 
-const sortedTargets = computed(() => [...props.targets].sort(compareTargetsByScopeThenLabel));
+const orderedTargets = computed(() => sortLiveCheckTargets(props.targets));
 
-const paginatedTargets = computed(() => {
+const {
+  draggingId,
+  previewOrder,
+  isSettling,
+  onPointerDown,
+} = useTargetDragReorder({
+  orderedIds: () => orderedTargets.value.map((target) => target.id),
+  onReorder: (order) => targetsStore.reorderTargets(order),
+  disabled: () => isReordering.value,
+});
+
+const displayTargets = computed(() => {
+  const targets = orderedTargets.value;
+  const reordered = reorderTargetsByIds(targets, previewOrder.value);
   const start = props.page * props.pageSize;
-  return sortedTargets.value.slice(start, start + props.pageSize);
+  return reordered.slice(start, start + props.pageSize);
 });
 
 const targetPill = computed(
@@ -67,10 +89,26 @@ function targetTrendTitle(target: TargetSummary): string {
   }`;
 }
 
+function targetColorFor(target: TargetSummary): string {
+  return targetColorForSource(target.config, target.id);
+}
+
 function targetBarTitle(target: TargetSummary, point: TargetHistoryPoint): string {
   return `${target.label} · ${formatDate(point.at)} ${formatClock(point.at)} · ${point.status} · ${
     point.latencyMs == null ? point.error ?? 'fail' : formatMs(point.latencyMs)
   }`;
+}
+
+function openAlertModal(target: TargetSummary): void {
+  void alertsStore.openAlertModal(target);
+}
+
+function toggleFavorite(target: TargetSummary): void {
+  void targetsStore.setTargetFavorite(target.id, !target.isFavorite);
+}
+
+function isFavoriting(targetId: string): boolean {
+  return favoritingId.value === targetId;
 }
 </script>
 
@@ -91,7 +129,9 @@ function targetBarTitle(target: TargetSummary, point: TargetHistoryPoint): strin
       <div v-else class="components-scroll">
         <div class="components-grid">
           <div class="components-grid__head" aria-hidden="true">
+            <span class="components-grid__drag" />
             <span>Target</span>
+            <span>IP</span>
             <span>Protocol</span>
             <span>Status</span>
             <span>Availability</span>
@@ -99,38 +139,37 @@ function targetBarTitle(target: TargetSummary, point: TargetHistoryPoint): strin
             <span>Checked</span>
             <span>Uptime</span>
             <span>Incident</span>
+            <span class="components-grid__actions">Actions</span>
           </div>
 
-          <template v-for="(target, index) in paginatedTargets" :key="target.id">
-            <div
-              v-if="shouldShowScopeHeader(paginatedTargets, index)"
-              class="components-scope-head"
-              role="presentation"
-            >
-              <span class="components-scope-head__label">{{ targetScopeLabel(target.scope) }}</span>
-              <span class="components-scope-head__hint">
-                {{ target.scope === 'gateway' ? 'Router and LAN' : 'Online services' }}
-              </span>
-            </div>
-
-            <article
-            v-memo="[
-              target.id,
-              target.scope,
-              target.type,
-              target.protocol,
-              target.currentStatus,
-              target.lastLatencyMs,
-              target.lastCheckedAt,
-              target.uptimePct,
-              target.activeIncident?.to,
-              target.history.length,
-              target.history.at(-1)?.at,
-              target.history.at(-1)?.status,
-            ]"
-            class="component-row"
+          <TransitionGroup
+            name="component-reorder"
+            tag="div"
+            class="components-grid-rows"
+            :class="{ 'is-reorder-settling': isSettling }"
           >
-            <div class="component-name">
+            <article
+              v-for="target in displayTargets"
+              :key="target.id"
+              class="component-row"
+              :class="{ 'is-dragging': draggingId === target.id }"
+              :data-reorder-id="target.id"
+            >
+              <button
+                type="button"
+                class="target-drag-handle"
+                :aria-label="`Reorder ${target.label}`"
+                :disabled="isReordering"
+                @pointerdown="onPointerDown(target.id, $event)"
+              >
+                <PhDotsSixVertical weight="bold" aria-hidden="true" />
+              </button>
+              <div class="component-name">
+              <span
+                class="component-name__color"
+                :style="{ backgroundColor: targetColorFor(target) }"
+                :aria-label="`${target.label} source color`"
+              />
               <component
                 :is="targetServiceIcon(target.type, target.protocol)"
                 class="component-name__icon"
@@ -138,10 +177,16 @@ function targetBarTitle(target: TargetSummary, point: TargetHistoryPoint): strin
                 aria-hidden="true"
               />
               <div class="component-name__text">
+                <PhStar
+                  v-if="target.isFavorite"
+                  class="component-name__favorite"
+                  weight="fill"
+                  aria-label="Favorite"
+                />
                 <strong>{{ target.label }}</strong>
-                <small>{{ target.host }}</small>
               </div>
             </div>
+            <div class="component-cell component-cell--ip stat">{{ target.host }}</div>
             <div class="component-cell component-cell--protocol stat">{{ target.protocol.toUpperCase() }}</div>
             <div class="component-cell component-cell--status">
               <span class="status" :class="target.currentStatus">
@@ -162,21 +207,31 @@ function targetBarTitle(target: TargetSummary, point: TargetHistoryPoint): strin
                 :title="targetBarTitle(target, point)"
               />
             </div>
-            <div class="component-cell stat" :title="lastValue(target)">{{ lastValue(target) }}</div>
+            <div class="component-cell stat">{{ lastValue(target) }}</div>
             <div class="component-cell stat">{{ lastChecked(target) }}</div>
             <div class="component-cell stat">{{ formatPct(target.uptimePct) }}</div>
             <div class="component-cell stat">{{ incidentState(target) }}</div>
+            <div class="component-cell component-cell--actions">
+              <LiveCheckRowActions
+                :target="target"
+                :favoriting="isFavoriting(target.id)"
+                @set-alert="openAlertModal(target)"
+                @toggle-favorite="toggleFavorite(target)"
+              />
+            </div>
             </article>
-          </template>
+          </TransitionGroup>
         </div>
       </div>
+
+      <TargetAlertModal />
 
       <Pagination
         v-if="targets.length"
         :current-page="page + 1"
         :total-items="targets.length"
         :items-per-page="pageSize"
-        order-label="alphabetical"
+        order-label="custom"
         @update:page="emit('update:page', $event)"
       />
     </div>

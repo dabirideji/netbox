@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from netbox.models import MonitorConfig
+from netbox.responses import terminal_color_name, terminal_symbol
 from netbox.timeutils import format_clock, format_duration
 
 
@@ -27,7 +28,10 @@ def render_dashboard(summary: dict[str, Any], config: MonitorConfig) -> None:
         f"{dim('Elapsed')} {elapsed}  {dim('Remaining')} {remaining}"
     )
     print()
-    print(f"{color_for(status)(symbol_for(status))} {color_for(status)(status.upper())} - {summary['diagnosis']}")
+    print(
+        f"{color_for(status)(terminal_symbol(status))} "
+        f"{color_for(status)(status.upper())} - {summary['diagnosis']}"
+    )
     print()
     print(
         f"{pad('Component', 20)} {pad('Status', 13)} {pad('Last', 10)} {pad('Loss', 8)} "
@@ -40,7 +44,7 @@ def render_dashboard(summary: dict[str, Any], config: MonitorConfig) -> None:
         last = target["lastError"] or "fail" if target["lastLatencyMs"] is None else f"{target['lastLatencyMs']:.1f}ms"
         print(
             f"{pad(target['label'], 20)} "
-            f"{color_for(target_status)(pad(symbol_for(target_status) + ' ' + target_status, 13))} "
+            f"{color_for(target_status)(pad(terminal_symbol(target_status) + ' ' + target_status, 13))} "
             f"{pad(last, 10)} "
             f"{pad(format_pct(target['packetLossPct']), 8)} "
             f"{pad(format_ms(target['avgLatencyMs']), 9)} "
@@ -83,16 +87,7 @@ def color_for(status: str) -> Any:
         "degraded": yellow,
         "down": red,
         "unknown": dim,
-    }.get(status, dim)
-
-
-def symbol_for(status: str) -> str:
-    return {
-        "operational": "●",
-        "degraded": "▲",
-        "down": "■",
-        "unknown": "○",
-    }.get(status, "○")
+    }[terminal_color_name(status)]
 
 
 def pad(value: Any, width: int) -> str:

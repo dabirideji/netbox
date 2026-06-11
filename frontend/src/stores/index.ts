@@ -20,3 +20,5 @@ export {
   DASHBOARD_SECTIONS_COLLAPSED_STORAGE_KEY,
 } from './personalisation';
 export { PREFERENCE_KEYS } from './preferenceKeys';
+export { useAlertsStore } from './alerts';
+export { useSettingsStore } from './settings';

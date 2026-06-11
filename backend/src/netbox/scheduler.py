@@ -8,6 +8,7 @@ from collections.abc import Callable
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from typing import Any
 
+from netbox.alerts.schedule import ALERT_TICK_INTERVAL_MS
 from netbox.checks import run_check
 from netbox.models import PingResult, Target
 from netbox.state import MonitorState
@@ -36,6 +37,7 @@ class TargetScheduler:
         self.next_due: dict[str, int] = {}
         self.inflight: dict[Future[PingResult | dict[str, Any]], Target] = {}
         self.last_gateway_sync_ms = 0
+        self.last_alert_tick_ms = 0
 
     def run(self, ends_at: int | None, render: RenderCallback | None = None) -> None:
         """Run checks until stopped or the optional deadline is reached."""
@@ -49,6 +51,10 @@ class TargetScheduler:
                 if current_time - self.last_gateway_sync_ms >= GATEWAY_SYNC_INTERVAL_MS:
                     self.state.sync_detected_gateway()
                     self.last_gateway_sync_ms = current_time
+
+                if current_time - self.last_alert_tick_ms >= ALERT_TICK_INTERVAL_MS:
+                    self.state.tick_alerts()
+                    self.last_alert_tick_ms = current_time
 
                 targets = self.state.active_targets()
                 target_map = {target.id: target for target in targets}

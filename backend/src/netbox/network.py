@@ -178,6 +178,18 @@ def clean_network_name(value: str | None) -> str | None:
     return name
 
 
+def wifi_ssid_likely_hidden(network: NetworkIdentity) -> bool:
+    """Return True when macOS privacy likely hides the active Wi-Fi SSID."""
+
+    if platform.system().lower() != "darwin":
+        return False
+    if network.ssid:
+        return False
+    if network.service == "Wi-Fi":
+        return True
+    return bool(network.interface and network.interface.startswith("en"))
+
+
 def format_interface_name(service: str | None, interface: str | None) -> str:
     """Format a fallback network label when the SSID is unavailable."""
 

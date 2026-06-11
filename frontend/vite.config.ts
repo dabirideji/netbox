@@ -77,6 +77,19 @@ export default defineConfig(({ mode }) => {
         provider: 'v8',
         reporter: ['text', 'html', 'lcov'],
         reportsDirectory: './coverage',
+        exclude: [
+          'src/**/*.test.ts',
+          'src/**/types.ts',
+          'src/main.ts',
+          'src/tray/**',
+          'src/workers/**',
+        ],
+        thresholds: {
+          statements: 57,
+          branches: 47,
+          functions: 63,
+          lines: 59,
+        },
       },
     },
   };

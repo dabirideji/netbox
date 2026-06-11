@@ -1,8 +1,10 @@
+from netbox.models import NetworkIdentity
 from netbox.network import (
     build_targets,
     clean_network_name,
     detect_network_identity,
     parse_gateway,
+    wifi_ssid_likely_hidden,
 )
 
 
@@ -52,3 +54,15 @@ def test_detect_network_identity_prefers_override() -> None:
 
     assert network.name == "Office WiFi"
     assert network.ssid == "Office WiFi"
+
+
+def test_wifi_ssid_likely_hidden_on_macos_wifi_without_ssid() -> None:
+    network = NetworkIdentity(name="Wi-Fi (en0)", ssid=None, interface="en0", service="Wi-Fi")
+
+    assert wifi_ssid_likely_hidden(network) is True
+
+
+def test_wifi_ssid_likely_hidden_false_when_ssid_present() -> None:
+    network = NetworkIdentity(name="Office WiFi", ssid="Office WiFi", interface="en0", service="Wi-Fi")
+
+    assert wifi_ssid_likely_hidden(network) is False

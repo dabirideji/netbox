@@ -1,12 +1,16 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import { storeToRefs } from 'pinia';
 import { Button } from '../ui/button';
 import { resolveGaugeMaxMbps, SpeedArcGauge } from '../ui/gauge';
 import { Pagination } from '../ui/pagination';
 import { formatDateTime, formatMbps, formatMs } from '../../format';
 import type { SpeedTestPolicy, SpeedTestResult, SpeedTestStats } from '../../types';
 import type { SpeedTestProgress } from '../../speed-test';
+import { useSpeedTestStore } from '../../stores/speedTest';
 import DashboardSectionCard from './DashboardSectionCard.vue';
+
+const { loadingPage } = storeToRefs(useSpeedTestStore());
 
 const props = defineProps<{
   latestSpeedTest: SpeedTestResult | null;
@@ -223,6 +227,7 @@ const minIntervalLabel = computed(() => {
         :current-page="speedTestPage + 1"
         :total-items="speedTestTotal"
         :items-per-page="speedTestPageSize"
+        :loading-page="loadingPage"
         @update:page="emit('update:page', $event)"
       />
     </div>

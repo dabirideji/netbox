@@ -14,6 +14,7 @@ export const useHistoryStore = defineStore(
     const targetSeries = ref<TargetHistorySeries[]>([]);
     const events = ref<StatusEvent[]>([]);
     const eventTotal = ref(0);
+    const loadingPage = ref<number | null>(null);
     const rangeError = ref('');
 
     const eventOffset = computed(() => usePersonalisationStore().eventPage * EVENT_PAGE_SIZE);
@@ -67,19 +68,23 @@ export const useHistoryStore = defineStore(
       if (!range) return;
 
       const personalisation = usePersonalisationStore();
+      loadingPage.value = personalisation.eventPage + 1;
 
       try {
-        const response = await fetchEvents(EVENT_PAGE_SIZE, range, eventOffset.value);
-        events.value = response.events;
-        eventTotal.value = response.total;
-
+        let response = await fetchEvents(EVENT_PAGE_SIZE, range, eventOffset.value);
         const maxPage = Math.max(0, Math.ceil(response.total / EVENT_PAGE_SIZE) - 1);
         if (personalisation.eventPage > maxPage) {
           personalisation.setEventPage(maxPage);
-          await refreshEvents();
+          loadingPage.value = personalisation.eventPage + 1;
+          response = await fetchEvents(EVENT_PAGE_SIZE, range, eventOffset.value);
         }
+
+        events.value = response.events;
+        eventTotal.value = response.total;
       } catch {
         events.value = events.value;
+      } finally {
+        loadingPage.value = null;
       }
     }
 
@@ -115,6 +120,7 @@ export const useHistoryStore = defineStore(
       targetSeries,
       events,
       eventTotal,
+      loadingPage,
       rangeError,
       isRangeActive,
       selectedRange,

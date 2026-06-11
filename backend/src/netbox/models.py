@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-Status = Literal["operational", "degraded", "down", "unknown"]
 Scope = Literal["gateway", "external"]
 TargetType = Literal["website", "api", "host", "port", "dns"]
 TargetProtocol = Literal["http", "https", "tcp", "icmp", "dns"]
@@ -27,6 +26,8 @@ class Target:
     interval_ms: int = 1_000
     timeout_ms: int = 900
     config: dict[str, Any] = field(default_factory=dict)
+    sort_order: int = 0
+    is_favorite: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         """Return the API representation used by CRUD endpoints."""
@@ -44,6 +45,8 @@ class Target:
             "intervalMs": self.interval_ms,
             "timeoutMs": self.timeout_ms,
             "config": self.config,
+            "sortOrder": self.sort_order,
+            "isFavorite": self.is_favorite,
         }
 
 

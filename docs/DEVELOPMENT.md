@@ -5,18 +5,22 @@ This project is intentionally small and dependency-light: Python standard librar
 ## Local Setup
 
 ```bash
-make install
+make setup   # optional on first clone
 make run
 ```
 
-Or, on first clone:
-
-```bash
-make setup
-make run
-```
+`make setup` and first `make run` both install dependencies, create `.env` when needed, and seed the local database.
 
 Open `http://127.0.0.1:5177` for the hot-reload dashboard. The backend API runs on `http://127.0.0.1:4177`.
+
+## Module size
+
+Keep modules focused and easy to scan:
+
+- **Soft cap:** ~300 lines per `.py`, `.ts`, or `.vue` file. Split when a file mixes responsibilities or grows past this.
+- **Hard split triggers:** distinct persistence domains, HTTP method handlers, large Vue sections, or reusable composables that can stand alone.
+- **Backend packages:** use folders with a thin `__init__.py` re-export (`storage/`, `server/`) so imports stay stable (`from netbox.storage import StatusStore`).
+- **Frontend:** move section logic into composables (`useTargetsConfigSection.ts`) and small child components instead of growing a single `.vue` file.
 
 ## Code Organization
 
@@ -29,9 +33,9 @@ backend/src/netbox/
   models.py       Shared dataclasses and status types
   network.py      Gateway/interface/Wi-Fi detection
   ping.py         Platform-specific ping command and parsing
-  server.py       JSON API, SSE, static assets, security headers
   state.py        Thread-safe samples, summaries, and SSE fanout
-  storage.py      SQLite schema, writes, and read models
+  storage/        SQLite persistence package (schema, targets, history, events, pruning)
+  server/         HTTP API package (routing dispatch, handler, static files, SSE)
   summary.py      Status aggregation and incident capture
   speed.py        Speed-test validation and policy helpers
   terminal.py     Terminal dashboard renderer
@@ -71,7 +75,7 @@ config/
 
 Use JSON config for structured application defaults and dotenv files for environment-specific values:
 
-- `.env.example` is the committed template copied to `.env` by `make setup`.
+- `.env.example` is the committed template copied to `.env` on first `make run`.
 - `.env` holds local development environment values such as ports, database path, and config directory (gitignored).
 - `.env.production` holds production runtime defaults and is loaded when `NETBOX_ENV=production` (gitignored).
 - `config/*.json` holds reviewable, typed defaults for backend behavior, frontend dev behavior, targets, and security policy.
@@ -115,26 +119,18 @@ make test
 make build
 ```
 
-First-time setup:
+Quality checks:
 
 ```bash
-make setup
-```
-
-Focused commands:
-
-```bash
-make backend-test    # pytest with 70% coverage gate
-make frontend-test   # vitest with coverage report
-make coverage        # both suites with XML/HTML artifacts
-cd frontend && npm run typecheck
+make lint
+make test
 ```
 
 ### Backend
 
 - Framework: pytest + pytest-cov
 - Location: `backend/tests/`
-- `make backend-test` runs `pytest --cov=netbox --cov-fail-under=70`
+- `make test` runs `pytest --cov=netbox --cov-fail-under=70` for the backend
 - Integration tests start a real HTTP server on an ephemeral port and write to temp SQLite files
 - Mocks are limited to external I/O: ping subprocess output, Pexels HTTP, and similar boundaries
 
@@ -142,6 +138,7 @@ cd frontend && npm run typecheck
 
 - Framework: Vitest + jsdom + `@vue/test-utils`
 - Test files live next to the code they cover (`*.test.ts`)
+- `make test` also runs `vitest run --coverage` with baseline thresholds in `frontend/vite.config.ts`
 - Component tests mount real Vue components; fetch is stubbed only when the test target is not the API client
 - NDT7 is mocked in `speed-test.test.ts` so speed-test orchestration is verified without hitting M-Lab
 
@@ -157,8 +154,8 @@ The default SQLite database lives at `data/netbox.sqlite3` and is gitignored.
 Useful local commands:
 
 ```bash
-make db-shell
-make clean-data
+sqlite3 data/netbox.sqlite3
+make clean DATA=1
 ```
 
 Use `--db-path` to test against a temporary database:
@@ -179,10 +176,11 @@ The frontend proxies `/api/*` and `/events` to the backend.
 ## Release-Style Run
 
 ```bash
-make run-prod
+make build
+.venv/bin/python backend/monitor.py --host 127.0.0.1 --port 4177
 ```
 
-This builds `frontend/dist` and serves those static files from the Python backend.
+This serves `frontend/dist` from the Python backend.
 
 ## Docker
 

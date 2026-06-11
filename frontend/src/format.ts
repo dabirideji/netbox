@@ -12,9 +12,16 @@ export function statusHeadline(status: Status): string {
   }[status];
 }
 
+export function isWifiNameHidden(network?: NetworkIdentity): boolean {
+  if (!network?.ssid && network?.service === 'Wi-Fi') {
+    return true;
+  }
+  return !network?.ssid && Boolean(network?.interface?.startsWith('en'));
+}
+
 export function networkLabel(network?: NetworkIdentity): string {
   if (network?.ssid) return `Wi‑Fi ${network.ssid}`;
-  if (network?.service === 'Wi-Fi' || network?.interface?.startsWith('en')) {
+  if (isWifiNameHidden(network)) {
     return 'Wi‑Fi name hidden by macOS';
   }
   if (network?.name) return `Network ${network.name}`;

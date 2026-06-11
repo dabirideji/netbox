@@ -5,7 +5,7 @@ Local network stability monitor with a Python backend and Vue dashboard. Netbox 
 ## Quick start
 
 ```bash
-make setup
+make setup   # optional on first clone
 make run
 ```
 
@@ -24,18 +24,16 @@ make run ARGS='--wifi-name "Office Wi-Fi"'
 
 | Command | Description |
 | --- | --- |
-| `make setup` | First-time install, folders, local env, and default monitor targets |
-| `make install` | Install backend and frontend dependencies |
-| `make run` | Start backend + Vite dev server with hot reload |
-| `make run-prod` | Build frontend and run production-style backend |
+| `make setup` | Prepare folders, `.env`, deps, and seed data (optional) |
+| `make run` | Dev dashboard + API |
+| `make test` | Backend and frontend tests |
+| `make lint` | Ruff and `vue-tsc` |
 | `make build` | Build `frontend/dist` |
-| `make test` | Run backend pytest (with coverage gate) and frontend Vitest |
-| `make coverage` | Run both suites with coverage reports |
-| `make lint` | Run Ruff and `vue-tsc` |
-| `make db-shell` | Open the local SQLite database |
-| `make clean-data` | Delete persisted local history |
-| `make docker-build` | Build the Docker image |
-| `make docker-run` | Run the container on port 4177 |
+| `make clean` | Remove build output and test caches |
+| `make desktop` | Electron dev shell |
+| `make package` | Desktop installers (`.dmg`, `.exe`, AppImage) |
+
+`make clean DATA=1` also deletes the local SQLite database.
 
 ## Layout
 
@@ -61,7 +59,7 @@ Defaults live in `config/*.json`. Runtime values load from `.env` (local, gitign
 | `config/targets.json` | Default target seeds for first startup |
 | `config/speed.json` | NDT7 speed-test policy |
 | `config/security.json` | Bind allow-list and security headers |
-| `.env.example` | Committed template - `make setup` copies this to `.env` |
+| `.env.example` | Committed template - first `make run` copies this to `.env` |
 | `.env` | Local development overrides (gitignored) |
 | `.env.production` | Production overrides when `NETBOX_ENV=production` (gitignored) |
 | `.env.local` | Private secrets and machine-specific overrides (gitignored) |
@@ -88,25 +86,17 @@ Before your first push, run `git add -A && git status` and confirm no secrets or
 ## Production
 
 ```bash
-make run-prod
+make build
+.venv/bin/python backend/monitor.py --host 127.0.0.1 --port 4177
 ```
-
-Or:
-
-```bash
-make docker-build
-make docker-run
-```
-
-After `make install`, you can also run `netbox` directly.
 
 ## Desktop app
 
 Netbox can run as a tray-backed Electron app with a bundled Python backend (no cloud required).
 
 ```bash
-make electron-dev        # local development shell
-make electron-package    # build installers
+make desktop    # local development shell
+make package    # build installers
 ```
 
 See [`docs/ELECTRON.md`](docs/ELECTRON.md) for packaging details and code-signing notes.

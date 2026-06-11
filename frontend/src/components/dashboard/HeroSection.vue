@@ -1,6 +1,9 @@
 <script setup lang="ts">
-import { PhCube } from '@phosphor-icons/vue';
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { PhSpinner } from '@phosphor-icons/vue';
+import NetboxLogo from '../NetboxLogo.vue';
+import { computed, onMounted, onUnmounted, ref, toRef } from 'vue';
+import { Button } from '../ui/button';
+import { useNetworkAccess } from '../../composables/useNetworkAccess';
 import { formatDuration, networkLabel } from '../../format';
 import type { NetworkIdentity, Status } from '../../types';
 import DashboardSectionCard from './DashboardSectionCard.vue';
@@ -15,6 +18,10 @@ const props = defineProps<{
   startedAt?: number;
   endsAt?: number | null;
 }>();
+
+const { isHidden, isRefreshing, statusMessage, requestNetworkAccess } = useNetworkAccess(
+  toRef(props, 'network'),
+);
 
 const now = ref(Date.now());
 let timer: number | undefined;
@@ -40,7 +47,7 @@ onUnmounted(() => {
   <DashboardSectionCard section-id="hero" class="dashboard-card--hero" :collapsible="false">
     <template #header>
       <p class="eyebrow hero__brand">
-        <PhCube class="hero__logo" :size="16" weight="fill" aria-hidden="true" />
+        <NetboxLogo class="hero__logo" :size="18" />
         <span>{{ appName }}</span>
       </p>
       <h1 :class="overallStatus">{{ headline }}</h1>
@@ -49,7 +56,22 @@ onUnmounted(() => {
     <div class="hero__content">
       <div>
         <p class="diagnosis">{{ diagnosis }}</p>
-        <p class="network-name">{{ networkLabel(network) }}</p>
+        <div class="network-name-row">
+          <p class="network-name">{{ networkLabel(network) }}</p>
+          <Button
+            v-if="isHidden"
+            type="button"
+            variant="ghost"
+            size="xs"
+            class="network-name-row__action"
+            :disabled="isRefreshing"
+            @click="requestNetworkAccess"
+          >
+            <PhSpinner v-if="isRefreshing" class="network-name-row__spinner" weight="bold" aria-hidden="true" />
+            {{ isRefreshing ? 'Requesting access' : 'Show Wi‑Fi name' }}
+          </Button>
+        </div>
+        <p v-if="statusMessage" class="network-name-hint">{{ statusMessage }}</p>
       </div>
       <div class="timer-card">
         <span>{{ isIndefinite ? 'Uptime' : 'Run window' }}</span>

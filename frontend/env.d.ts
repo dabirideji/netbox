@@ -3,9 +3,20 @@
 declare module '*.css';
 declare const __NETBOX_APP_NAME__: string;
 
+interface NetboxDesktopNetworkAccessResult {
+  ok: boolean;
+  ssid: string | null;
+  message: string;
+}
+
 interface NetboxDesktopBridge {
   desktop: true;
   setTrayCompact?: (compact: boolean) => void;
+  startTrayDrag?: (screenX: number, screenY: number) => void;
+  moveTrayDrag?: (screenX: number, screenY: number) => void;
+  endTrayDrag?: () => void;
+  hideTray?: () => void;
+  requestNetworkAccess?: () => Promise<NetboxDesktopNetworkAccessResult>;
 }
 
 interface Window {

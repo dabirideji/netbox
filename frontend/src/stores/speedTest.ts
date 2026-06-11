@@ -30,6 +30,7 @@ export const useSpeedTestStore = defineStore(
     const tests = ref<SpeedTestResult[]>([]);
     const latestTest = ref<SpeedTestResult | null>(null);
     const total = ref(0);
+    const loadingPage = ref<number | null>(null);
     const policy = ref<SpeedTestPolicy | null>(null);
     const stats = ref<SpeedTestStats>({ ...EMPTY_STATS });
     const error = ref('');
@@ -108,9 +109,17 @@ export const useSpeedTestStore = defineStore(
 
     async function refreshTests(): Promise<void> {
       const personalisation = usePersonalisationStore();
+      loadingPage.value = personalisation.speedTestPage + 1;
 
       try {
-        const response = await fetchSpeedTests(SPEED_TEST_PAGE_SIZE, selectedRange(), testOffset.value);
+        let response = await fetchSpeedTests(SPEED_TEST_PAGE_SIZE, selectedRange(), testOffset.value);
+        const maxPage = Math.max(0, Math.ceil(response.total / SPEED_TEST_PAGE_SIZE) - 1);
+        if (personalisation.speedTestPage > maxPage) {
+          personalisation.setSpeedTestPage(maxPage);
+          loadingPage.value = personalisation.speedTestPage + 1;
+          response = await fetchSpeedTests(SPEED_TEST_PAGE_SIZE, selectedRange(), testOffset.value);
+        }
+
         tests.value = response.tests;
         total.value = response.total;
         stats.value = response.stats;
@@ -119,14 +128,10 @@ export const useSpeedTestStore = defineStore(
         if (personalisation.speedTestPage === 0) {
           latestTest.value = response.tests[0] ?? null;
         }
-
-        const maxPage = Math.max(0, Math.ceil(response.total / SPEED_TEST_PAGE_SIZE) - 1);
-        if (personalisation.speedTestPage > maxPage) {
-          personalisation.setSpeedTestPage(maxPage);
-          await refreshTests();
-        }
       } catch {
         tests.value = tests.value;
+      } finally {
+        loadingPage.value = null;
       }
     }
 
@@ -192,6 +197,7 @@ export const useSpeedTestStore = defineStore(
       tests,
       latestTest,
       total,
+      loadingPage,
       policy,
       stats,
       error,

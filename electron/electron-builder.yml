@@ -23,8 +23,12 @@ extraResources:
       - "**/*"
 asar: true
 mac:
-  icon: build/icon.png
+  icon: build/icon.icns
   category: public.app-category.utilities
+  extendInfo:
+    NSLocationWhenInUseUsageDescription: >-
+      Netbox needs location access to display your Wi-Fi network name.
+      macOS uses this permission to protect network information.
   target:
     - dmg
     - zip

@@ -2,39 +2,87 @@
 
 import { decrementApiLoading, incrementApiLoading } from './composables/useApiLoading';
 import { appendRangeParams, type TimestampRange } from './range';
+import { apiErrorCodeForMessage, isBackendUnavailableStatus } from './responses';
 import { parseStreamPayload } from './workers/streamParser';
+import type { ApiErrorBody } from './types';
 import type {
   EventsResponse,
   HistoryResponse,
+  NetworkRefreshResponse,
   LiveCheckResult,
+  SmtpSettingsResponse,
+  SmtpTestResponse,
   SpeedTestRecordPayload,
   SpeedTestsResponse,
+  PlatformSettings,
+  PlatformSettingsResponse,
   PreferencesResponse,
   StatusSummary,
   StorageClearResponse,
   StorageClearScope,
   StorageStatsResponse,
   StreamPayload,
+  TargetAlertResponse,
+  TargetAlertRules,
   TargetHistoryResponse,
   TargetPayload,
+  TargetPreviewCheckResponse,
   TargetResponse,
   TargetResultsResponse,
   TargetsResponse,
   WallpaperResponse,
 } from './types';
 
+function apiNetworkError(error: unknown): Error {
+  const desktop = typeof window !== 'undefined' && 'netboxDesktop' in window;
+  if (error instanceof TypeError) {
+    return new Error(
+      desktop
+        ? 'Backend unavailable. Restart Netbox from the tray menu or wait a moment.'
+        : 'Backend unavailable. Start the monitor with make run.',
+    );
+  }
+  if (error instanceof Error) {
+    return error;
+  }
+  return new Error('Backend request failed');
+}
+
 /** Track in-flight backend API calls for the global loading spinner. */
 async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   incrementApiLoading();
   try {
     return await fetch(input, init);
+  } catch (error) {
+    throw apiNetworkError(error);
   } finally {
     decrementApiLoading();
   }
 }
 
-function apiRequestError(action: string, status: number): Error {
-  if (status === 502 || status === 503 || status === 504) {
+async function readApiError(response: Response): Promise<ApiErrorBody | null> {
+  try {
+    const payload = (await response.json()) as Partial<ApiErrorBody>;
+    if (typeof payload.error === 'string') {
+      return {
+        code: typeof payload.code === 'string' ? payload.code : apiErrorCodeForMessage(payload.error, response.status),
+        error: payload.error,
+      };
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+async function ensureApiOk(response: Response, action: string): Promise<void> {
+  if (!response.ok) {
+    throw apiRequestError(action, response.status, await readApiError(response));
+  }
+}
+
+function apiRequestError(action: string, status: number, body?: ApiErrorBody | null): Error {
+  if (isBackendUnavailableStatus(status)) {
     const desktop = typeof window !== 'undefined' && 'netboxDesktop' in window;
     return new Error(
       desktop
@@ -42,7 +90,26 @@ function apiRequestError(action: string, status: number): Error {
         : 'Backend unavailable. Start the monitor with make run.',
     );
   }
+  if (body?.error) {
+    return new Error(body.error);
+  }
   return new Error(`${action} request failed: ${status}`);
+}
+
+/** Refresh the active network identity, optionally applying a detected Wi-Fi name. */
+export async function refreshNetworkIdentity(wifiName?: string): Promise<NetworkRefreshResponse> {
+  const response = await apiFetch('/api/network/refresh', {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(wifiName ? { wifiName } : {}),
+  });
+
+  await ensureApiOk(response, 'Network refresh');
+
+  return response.json() as Promise<NetworkRefreshResponse>;
 }
 
 /** Fetch the latest monitor snapshot. */
@@ -51,9 +118,7 @@ export async function fetchStatus(): Promise<StatusSummary> {
     headers: { Accept: 'application/json' },
   });
 
-  if (!response.ok) {
-    throw new Error(`Status request failed: ${response.status}`);
-  }
+  await ensureApiOk(response, 'Status');
 
   return response.json() as Promise<StatusSummary>;
 }
@@ -83,9 +148,7 @@ export async function fetchHistory(points = 360, range: TimestampRange = {}): Pr
     headers: { Accept: 'application/json' },
   });
 
-  if (!response.ok) {
-    throw new Error(`History request failed: ${response.status}`);
-  }
+  await ensureApiOk(response, 'History');
 
   return response.json() as Promise<HistoryResponse>;
 }
@@ -98,9 +161,7 @@ export async function fetchEvents(limit = 10, range: TimestampRange = {}, offset
     headers: { Accept: 'application/json' },
   });
 
-  if (!response.ok) {
-    throw new Error(`Events request failed: ${response.status}`);
-  }
+  await ensureApiOk(response, 'Events');
 
   return response.json() as Promise<EventsResponse>;
 }
@@ -113,9 +174,7 @@ export async function fetchTargetHistory(points = 360, range: TimestampRange = {
     headers: { Accept: 'application/json' },
   });
 
-  if (!response.ok) {
-    throw new Error(`Target history request failed: ${response.status}`);
-  }
+  await ensureApiOk(response, 'Target history');
 
   return response.json() as Promise<TargetHistoryResponse>;
 }
@@ -126,11 +185,25 @@ export async function fetchTargets(): Promise<TargetsResponse> {
     headers: { Accept: 'application/json' },
   });
 
-  if (!response.ok) {
-    throw new Error(`Targets request failed: ${response.status}`);
-  }
+  await ensureApiOk(response, 'Targets');
 
   return response.json() as Promise<TargetsResponse>;
+}
+
+/** Run one immediate check from an unsaved target payload. */
+export async function previewTargetCheck(payload: TargetPayload): Promise<TargetPreviewCheckResponse> {
+  const response = await apiFetch('/api/targets/preview-check', {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  await ensureApiOk(response, 'Target preview check');
+
+  return response.json() as Promise<TargetPreviewCheckResponse>;
 }
 
 /** Create a new monitor target. */
@@ -144,10 +217,7 @@ export async function createTarget(payload: TargetPayload): Promise<TargetRespon
     body: JSON.stringify(payload),
   });
 
-  if (!response.ok) {
-    const error = await readApiError(response, 'Target create failed');
-    throw new Error(error);
-  }
+  await ensureApiOk(response, 'Target create');
 
   return response.json() as Promise<TargetResponse>;
 }
@@ -163,12 +233,41 @@ export async function patchTarget(targetId: string, payload: TargetPayload): Pro
     body: JSON.stringify(payload),
   });
 
-  if (!response.ok) {
-    const error = await readApiError(response, 'Target update failed');
-    throw new Error(error);
-  }
+  await ensureApiOk(response, 'Target update');
 
   return response.json() as Promise<TargetResponse>;
+}
+
+/** Pin or unpin one target at the top of live checks. */
+export async function setTargetFavorite(targetId: string, favorite: boolean): Promise<TargetResponse> {
+  const response = await apiFetch(`/api/targets/${encodeURIComponent(targetId)}/favorite`, {
+    method: 'PATCH',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ favorite }),
+  });
+
+  await ensureApiOk(response, 'Target favorite');
+
+  return response.json() as Promise<TargetResponse>;
+}
+
+/** Persist a new display order for all monitor targets. */
+export async function reorderTargets(order: string[]): Promise<TargetsResponse> {
+  const response = await apiFetch('/api/targets/order', {
+    method: 'PATCH',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ order }),
+  });
+
+  await ensureApiOk(response, 'Target reorder');
+
+  return response.json() as Promise<TargetsResponse>;
 }
 
 /** Delete one monitor target. */
@@ -178,10 +277,7 @@ export async function deleteTarget(targetId: string): Promise<{ deleted: boolean
     headers: { Accept: 'application/json' },
   });
 
-  if (!response.ok) {
-    const error = await readApiError(response, 'Target delete failed');
-    throw new Error(error);
-  }
+  await ensureApiOk(response, 'Target delete');
 
   return response.json() as Promise<{ deleted: boolean }>;
 }
@@ -193,10 +289,7 @@ export async function checkTargetNow(targetId: string): Promise<{ result: LiveCh
     headers: { Accept: 'application/json' },
   });
 
-  if (!response.ok) {
-    const error = await readApiError(response, 'Target check failed');
-    throw new Error(error);
-  }
+  await ensureApiOk(response, 'Target check');
 
   return response.json() as Promise<{ result: LiveCheckResult; summary: StatusSummary }>;
 }
@@ -214,9 +307,7 @@ export async function fetchTargetResults(
     headers: { Accept: 'application/json' },
   });
 
-  if (!response.ok) {
-    throw new Error(`Target results request failed: ${response.status}`);
-  }
+  await ensureApiOk(response, 'Target results');
 
   return response.json() as Promise<TargetResultsResponse>;
 }
@@ -233,9 +324,7 @@ export async function fetchSpeedTests(
     headers: { Accept: 'application/json' },
   });
 
-  if (!response.ok) {
-    throw new Error(`Speed-test request failed: ${response.status}`);
-  }
+  await ensureApiOk(response, 'Speed test');
 
   return response.json() as Promise<SpeedTestsResponse>;
 }
@@ -254,9 +343,7 @@ export async function recordSpeedTest(payload: SpeedTestRecordPayload): Promise<
     body: JSON.stringify(payload),
   });
 
-  if (!response.ok) {
-    throw new Error(`Speed-test save failed: ${response.status}`);
-  }
+  await ensureApiOk(response, 'Speed test save');
 
   return response.json() as Promise<{
     test: SpeedTestsResponse['tests'][number];
@@ -270,9 +357,7 @@ export async function fetchPreferences(): Promise<PreferencesResponse> {
     headers: { Accept: 'application/json' },
   });
 
-  if (!response.ok) {
-    throw apiRequestError('Preferences', response.status);
-  }
+  await ensureApiOk(response, 'Preferences');
 
   return response.json() as Promise<PreferencesResponse>;
 }
@@ -288,9 +373,7 @@ export async function patchPreferences(updates: Record<string, unknown>): Promis
     body: JSON.stringify(updates),
   });
 
-  if (!response.ok) {
-    throw new Error(`Preferences update failed: ${response.status}`);
-  }
+  await ensureApiOk(response, 'Preferences update');
 
   return response.json() as Promise<PreferencesResponse>;
 }
@@ -301,9 +384,7 @@ export async function fetchStorageStats(): Promise<StorageStatsResponse> {
     headers: { Accept: 'application/json' },
   });
 
-  if (!response.ok) {
-    throw new Error(`Storage stats request failed: ${response.status}`);
-  }
+  await ensureApiOk(response, 'Storage stats');
 
   return response.json() as Promise<StorageStatsResponse>;
 }
@@ -319,11 +400,113 @@ export async function clearStorage(scope: StorageClearScope): Promise<StorageCle
     body: JSON.stringify({ scope }),
   });
 
-  if (!response.ok) {
-    throw new Error(`Storage clear request failed: ${response.status}`);
-  }
+  await ensureApiOk(response, 'Storage clear');
 
   return response.json() as Promise<StorageClearResponse>;
+}
+
+/** Fetch platform-wide settings. */
+export async function fetchPlatformSettings(): Promise<PlatformSettingsResponse> {
+  const response = await apiFetch('/api/settings/platform', {
+    headers: { Accept: 'application/json' },
+  });
+
+  await ensureApiOk(response, 'Platform settings');
+
+  return response.json() as Promise<PlatformSettingsResponse>;
+}
+
+/** Persist platform-wide settings. */
+export async function updatePlatformSettings(
+  payload: Partial<PlatformSettings>,
+): Promise<PlatformSettingsResponse> {
+  const response = await apiFetch('/api/settings/platform', {
+    method: 'PATCH',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  await ensureApiOk(response, 'Platform settings update');
+
+  return response.json() as Promise<PlatformSettingsResponse>;
+}
+
+/** Fetch configured SMTP provider settings. */
+export async function fetchSmtpSettings(): Promise<SmtpSettingsResponse> {
+  const response = await apiFetch('/api/alerts/smtp', {
+    headers: { Accept: 'application/json' },
+  });
+
+  await ensureApiOk(response, 'SMTP settings');
+
+  return response.json() as Promise<SmtpSettingsResponse>;
+}
+
+/** Persist SMTP provider settings. */
+export async function updateSmtpSettings(
+  payload: Record<string, unknown>,
+): Promise<SmtpSettingsResponse> {
+  const response = await apiFetch('/api/alerts/smtp', {
+    method: 'PATCH',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  await ensureApiOk(response, 'SMTP settings update');
+
+  return response.json() as Promise<SmtpSettingsResponse>;
+}
+
+/** Send one SMTP test email using stored or draft settings. */
+export async function testSmtpSettings(payload: Record<string, unknown>): Promise<SmtpTestResponse> {
+  const response = await apiFetch('/api/alerts/smtp/test', {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  await ensureApiOk(response, 'SMTP test');
+
+  return response.json() as Promise<SmtpTestResponse>;
+}
+
+/** Fetch alert rules for one target. */
+export async function fetchTargetAlert(targetId: string): Promise<TargetAlertResponse> {
+  const response = await apiFetch(`/api/targets/${encodeURIComponent(targetId)}/alert`, {
+    headers: { Accept: 'application/json' },
+  });
+
+  await ensureApiOk(response, 'Target alert');
+
+  return response.json() as Promise<TargetAlertResponse>;
+}
+
+/** Persist alert rules for one target. */
+export async function updateTargetAlert(
+  targetId: string,
+  payload: Partial<TargetAlertRules>,
+): Promise<TargetAlertResponse> {
+  const response = await apiFetch(`/api/targets/${encodeURIComponent(targetId)}/alert`, {
+    method: 'PATCH',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  await ensureApiOk(response, 'Target alert update');
+
+  return response.json() as Promise<TargetAlertResponse>;
 }
 
 /** Fetch a curated Pexels wallpaper through the backend proxy. */
@@ -332,15 +515,7 @@ export async function fetchWallpaper(): Promise<WallpaperResponse> {
     headers: { Accept: 'application/json' },
   });
 
-  if (!response.ok) {
-    const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-    throw new Error(payload?.error ?? `Wallpaper request failed: ${response.status}`);
-  }
+  await ensureApiOk(response, 'Wallpaper');
 
   return response.json() as Promise<WallpaperResponse>;
-}
-
-async function readApiError(response: Response, fallback: string): Promise<string> {
-  const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-  return payload?.error ?? `${fallback}: ${response.status}`;
 }

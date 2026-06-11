@@ -59,6 +59,7 @@ electron/dist/
 electron/release/
 *.sqlite3
 *.sqlite3-*
+.netbox-key
 
 # IDE and editor
 .idea/

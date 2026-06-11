@@ -6,15 +6,20 @@ import json
 import math
 import queue
 import threading
+from dataclasses import asdict
 from typing import Any
 
+from netbox.alerts import dispatch_ongoing_alerts, dispatch_target_alerts, smtp_settings_to_api, target_alert_to_api
+from netbox.alerts.platform import platform_settings_to_api
+from netbox.alerts.smtp_client import build_alert_email, send_alert_email
 from netbox.checks import run_check
 from netbox.models import MonitorConfig, NetworkIdentity, Target
-from netbox.network import detect_default_gateway
+from netbox.network import clean_network_name, detect_default_gateway, detect_network_identity
+from netbox.responses import monitor_status_severity
 from netbox.speed import ONE_DAY_MS, normalize_speed_test, speed_policy
 from netbox.storage import DEFAULT_STORAGE_CONFIG, StatusStore
-from netbox.summary import capture_events, summarize
-from netbox.targets import gateway_host_sync_payload, target_to_api
+from netbox.summary import capture_events, latency_warn_ms_for, status_for_result, summarize
+from netbox.targets import gateway_host_sync_payload, normalize_target_payload, target_to_api
 from netbox.timeutils import now_ms
 
 
@@ -84,15 +89,43 @@ class MonitorState:
             summary = self._summarize()
             event_count = len(self.events)
             capture_events(self.last_summary, summary, sample, self.events, self.broadcast)
+            new_events: list[dict[str, Any]] = []
             if self.store:
                 new_events = self.events[event_count:]
                 self.store.record_events(new_events)
                 self.store.record_incident_events(new_events)
+                self._dispatch_alerts(new_events)
             summary = self._summarize()
             self.last_summary = summary
 
         self.broadcast({"type": "status", "summary": summary})
         return summary
+
+    def refresh_network_identity(self, wifi_name: str | None = None) -> dict[str, Any]:
+        """Re-detect or apply a Wi-Fi name and broadcast an updated status snapshot."""
+
+        with self.lock:
+            if wifi_name:
+                cleaned = clean_network_name(wifi_name)
+                if cleaned:
+                    self.network = NetworkIdentity(
+                        name=cleaned,
+                        ssid=cleaned,
+                        interface=self.network.interface,
+                        service=self.network.service,
+                    )
+            else:
+                self.network = detect_network_identity(self.config.wifi_name)
+
+            summary = (
+                {**self.last_summary, "network": asdict(self.network)}
+                if self.last_summary
+                else self._summarize()
+            )
+            self.last_summary = summary
+
+        self.broadcast({"type": "status", "summary": summary})
+        return {"network": asdict(self.network)}
 
     def snapshot(self) -> dict[str, Any]:
         """Return the latest summary, creating an empty one if needed."""
@@ -186,6 +219,38 @@ class MonitorState:
         self.broadcast({"type": "targets", **self.list_targets()})
         return {"deleted": True}
 
+    def set_target_favorite(self, target_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        """Pin or unpin one target at the top of live checks."""
+
+        favorite = payload.get("favorite")
+        if not isinstance(favorite, bool):
+            raise ValueError("favorite must be a boolean")
+
+        store = self._require_store()
+        target = store.set_target_favorite(target_id, favorite)
+        self.reload_targets()
+        targets_response = self.list_targets()
+        self.broadcast({"type": "targets", **targets_response})
+        with self.lock:
+            summary = self._summarize()
+            self.last_summary = summary
+            self.broadcast({"type": "status", "summary": summary})
+        return {"target": target_to_api(target)}
+
+    def reorder_targets(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Persist a new target display order and broadcast the updated list."""
+
+        order = payload.get("order")
+        if not isinstance(order, list) or not all(isinstance(item, str) for item in order):
+            raise ValueError("order must be an array of target ids")
+
+        store = self._require_store()
+        store.reorder_targets(order)
+        self.reload_targets()
+        response = self.list_targets()
+        self.broadcast({"type": "targets", **response})
+        return response
+
     def check_now(self, target_id: str) -> dict[str, Any]:
         """Run one immediate check and append it to persisted history."""
 
@@ -195,6 +260,19 @@ class MonitorState:
         result = run_check(target).to_dict()
         summary = self.append_sample({"checkedAt": result["checkedAt"], "results": [result]})
         return {"result": result, "summary": summary}
+
+    def preview_target_check(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Run one immediate check from an unsaved target payload without persisting it."""
+
+        target = normalize_target_payload(payload, index=len(self.current_targets()))
+        result = run_check(target).to_dict()
+        status = status_for_result(result, latency_warn_ms_for(target, self.config), target)
+        return {
+            "preview": True,
+            "result": result,
+            "status": status,
+            "severity": monitor_status_severity(status),
+        }
 
     def target_results(
         self,
@@ -353,6 +431,148 @@ class MonitorState:
         latest = self.store.latest_speed_test()
         runs_last_day = self.store.count_speed_tests_since(current_time - ONE_DAY_MS)
         return speed_policy(self.config.speed_config, latest, runs_last_day, current_time)
+
+    def platform_settings(self) -> dict[str, Any]:
+        """Return persisted platform-wide settings."""
+
+        store = self._require_store()
+        return {"settings": platform_settings_to_api(store.get_platform_settings())}
+
+    def update_platform_settings(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Persist platform-wide settings."""
+
+        store = self._require_store()
+        settings = store.update_platform_settings(payload)
+        return {"settings": platform_settings_to_api(settings)}
+
+    def smtp_settings(self) -> dict[str, Any]:
+        """Return configured SMTP settings without exposing stored secrets."""
+
+        store = self._require_store()
+        return {"smtp": smtp_settings_to_api(store.get_smtp_settings())}
+
+    def update_smtp_settings(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Persist SMTP provider settings with encrypted credentials."""
+
+        store = self._require_store()
+        settings = store.update_smtp_settings(payload)
+        return {"smtp": smtp_settings_to_api(settings)}
+
+    def test_smtp_settings(self, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Send one test email using stored or draft SMTP settings."""
+
+        from netbox.alerts.models import normalize_smtp_payload
+
+        store = self._require_store()
+        current = store.get_smtp_settings()
+        draft = payload if isinstance(payload, dict) else {}
+        merged = {
+            "provider": draft.get("provider", current["provider"]),
+            "host": draft.get("host", current["host"]),
+            "port": draft.get("port", current["port"]),
+            "username": draft.get("username", current["username"]),
+            "fromEmail": draft.get("fromEmail", current["fromEmail"]),
+            "fromName": draft.get("fromName", current["fromName"]),
+            "useTls": draft.get("useTls", current["useTls"]),
+            "password": draft.get("password"),
+        }
+        normalized = normalize_smtp_payload(merged)
+        password = normalized.get("password") or store.get_smtp_password()
+        if not password:
+            raise ValueError("password is required")
+
+        settings = {
+            "provider": normalized["provider"],
+            "host": normalized["host"],
+            "port": normalized["port"],
+            "username": normalized["username"],
+            "fromEmail": normalized["fromEmail"],
+            "fromName": normalized["fromName"],
+            "useTls": normalized["useTls"],
+            "configured": True,
+        }
+
+        recipient = str(draft.get("testEmail") or settings["fromEmail"]).strip()
+        if not recipient:
+            raise ValueError("testEmail is required")
+
+        subject, body, html_body = build_alert_email(
+            {
+                "targetLabel": "SMTP test",
+                "from": "operational",
+                "to": "degraded",
+                "message": "This is a test alert from Netbox.",
+            }
+        )
+        send_alert_email(
+            settings,
+            password=password,
+            to_email=recipient,
+            subject=subject,
+            body=body,
+            html_body=html_body,
+        )
+        return {"ok": True, "message": f"Test email sent to {recipient}"}
+
+    def target_alert(self, target_id: str) -> dict[str, Any]:
+        """Return alert rules configured for one target."""
+
+        store = self._require_store()
+        rules = store.get_target_alert(target_id)
+        smtp_configured = store.get_smtp_settings()["configured"]
+        return {"alert": target_alert_to_api(target_id, rules, smtp_configured=smtp_configured)}
+
+    def update_target_alert(self, target_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        """Persist alert rules for one target."""
+
+        store = self._require_store()
+        rules = store.update_target_alert(target_id, payload)
+        smtp_configured = store.get_smtp_settings()["configured"]
+        return {"alert": target_alert_to_api(target_id, rules, smtp_configured=smtp_configured)}
+
+    def tick_alerts(self) -> None:
+        """Evaluate persisted alert schedules on a wall-clock tick."""
+
+        if not self.store:
+            return
+
+        with self.lock:
+            summary = self.last_summary or self._summarize()
+
+        dispatch_ongoing_alerts(
+            summary,
+            get_rules=self.store.get_target_alert,
+            smtp_settings=self._smtp_settings(),
+            smtp_password=self._smtp_password(),
+            dispatch_store=self.store,
+            broadcast=self.broadcast,
+        )
+
+    def _dispatch_alerts(self, events: list[dict[str, Any]]) -> None:
+        """Emit configured alert channels for new status transition events."""
+
+        if not self.store or not events:
+            return
+
+        dispatch_target_alerts(
+            events,
+            get_rules=self.store.get_target_alert,
+            smtp_settings=self._smtp_settings(),
+            smtp_password=self._smtp_password(),
+            dispatch_store=self.store,
+            broadcast=self.broadcast,
+        )
+
+    def _smtp_settings(self) -> dict[str, Any] | None:
+        if not self.store:
+            return None
+        return self.store.get_smtp_settings()
+
+    def _smtp_password(self) -> str:
+        settings = self._smtp_settings()
+        if not settings or not settings["configured"]:
+            return ""
+        return self.store.get_smtp_password()
 
     def _summarize(self) -> dict[str, Any]:
         """Build a summary from the currently retained in-memory samples."""

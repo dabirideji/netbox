@@ -1,5 +1,5 @@
 import { liveTargetHistoryToSeverityPoints, severityPath, targetTrendToSeverityPoints } from './chart';
-import { targetColor } from './targetColors';
+import { targetColorForSource } from './targetColors';
 import type { TargetHistorySeries, TargetSummary } from './types';
 
 export interface TimelineOverviewSeries {
@@ -14,19 +14,15 @@ export function buildTimelineOverviewSeries(
   targets: TargetSummary[],
   targetHistory: TargetHistorySeries[],
 ): TimelineOverviewSeries[] {
-  const colorIndexById = new Map(targets.map((target, index) => [target.id, index]));
-
   if (targetHistory.length) {
     return targetHistory
-      .map((series, index) => {
+      .map((series) => {
         const points = targetTrendToSeverityPoints(series.points);
+        const target = targets.find((entry) => entry.id === series.id);
         return {
           id: series.id,
           label: series.label,
-          color: targetColor(
-            targets.find((target) => target.id === series.id)?.config,
-            colorIndexById.get(series.id) ?? index,
-          ),
+          color: targetColorForSource(target?.config, series.id),
           path: severityPath(points),
           pointCount: points.length,
         };
@@ -35,12 +31,12 @@ export function buildTimelineOverviewSeries(
   }
 
   return targets
-    .map((target, index) => {
+    .map((target) => {
       const points = liveTargetHistoryToSeverityPoints(target.history);
       return {
         id: target.id,
         label: target.label,
-        color: targetColor(target.config, index),
+        color: targetColorForSource(target.config, target.id),
         path: severityPath(points),
         pointCount: points.length,
       };

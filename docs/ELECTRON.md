@@ -5,8 +5,7 @@ Netbox ships as a local-first desktop app: Electron supervises a bundled Python 
 ## Development
 
 ```bash
-make setup
-make electron-dev
+make desktop
 ```
 
 This builds `frontend/dist`, installs Electron dependencies, spawns the Python backend on `127.0.0.1:4177`, and opens the dashboard window with a tray icon.
@@ -14,7 +13,7 @@ This builds `frontend/dist`, installs Electron dependencies, spawns the Python b
 ## Packaging
 
 ```bash
-make electron-package
+make package
 ```
 
 This will:
@@ -40,7 +39,7 @@ Electron main process
 
 | Variable | Purpose |
 | --- | --- |
-| `NETBOX_PROJECT_ROOT` | Repo root for `make electron-dev` |
+| `NETBOX_PROJECT_ROOT` | Repo root for `make desktop` |
 | `NETBOX_PYTHON` | Python executable for dev backend spawn |
 | `NETBOX_AUTO_UPDATE=0` | Disable `electron-updater` checks in packaged builds |
 
@@ -52,4 +51,4 @@ Electron main process
 - **Windows:** Authenticode certificate
 - **Linux:** optional GPG for package repos
 
-Replace `electron/build/icon.png` with production artwork before release.
+Update `icons/black.png` and `icons/white.png`, then run `make generate-icons` to refresh web, tray, and app icons. Icon generation uses ImageMagick (`magick` or `convert`).

@@ -9,10 +9,10 @@ backend/monitor.py          Local backend entrypoint
 backend/src/netbox/
   config.py                 Dotenv + JSON configuration loading
   cli.py                    Argument parsing, validation, process lifecycle
-  server.py                 HTTP, static files, SSE, security headers
+  server/                   HTTP routing dispatch, handler, static files, SSE
   state.py                  Thread-safe monitor state and SSE fanout
   scheduler.py              In-process per-target scheduler with jitter
-  storage.py                SQLite persistence and history aggregation
+  storage/                  SQLite persistence package (targets, history, events, pruning)
   targets.py                Target validation and seed normalization
   checks.py                 HTTP/S, TCP, ICMP, and DNS executors
   ping.py                   Platform-specific ping execution and parsing
@@ -154,7 +154,7 @@ flowchart LR
     Vite -->|"proxy /api · /events"| BackendDev
   end
 
-  subgraph Prod["Production - make run-prod / Docker"]
+  subgraph Prod["Production - make build + monitor / Docker"]
     NetboxCLI["netbox / monitor.py"]
     ProdServer["Python HTTP server<br/>:4177"]
     Dist["frontend/dist"]
@@ -237,7 +237,7 @@ When wallpaper is enabled, the dashboard applies a fixed body background with a 
 - Backend monitor on port `4177`, restarted automatically when `backend/monitor.py` or `backend/src/**/*.py` changes.
 - Vite dev server on port `5177`, with HMR for Vue, TypeScript, and CSS changes.
 
-The Vite server proxies `/api` and `/events` to the backend. Production-style serving remains available via `make run-prod`.
+The Vite server proxies `/api` and `/events` to the backend. Production-style serving uses `make build` plus the `monitor.py` entrypoint.
 
 ## Security Notes
 

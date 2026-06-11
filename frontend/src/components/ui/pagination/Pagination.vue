@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { PhSpinner } from '@phosphor-icons/vue';
 import { computed } from 'vue';
 import { Button } from '../button';
 
@@ -10,6 +11,7 @@ const props = withDefaults(
     itemsPerPage: number;
     orderLabel?: string;
     showSummary?: boolean;
+    loadingPage?: number | null;
   }>(),
   {
     currentPage: 1,
@@ -17,6 +19,7 @@ const props = withDefaults(
     itemsPerPage: 10,
     orderLabel: 'newest first',
     showSummary: true,
+    loadingPage: null,
   },
 );
 
@@ -28,8 +31,9 @@ const totalPages = computed(() => Math.max(1, Math.ceil(props.totalItems / props
 const safePage = computed(() => clampPage(props.currentPage));
 const startItem = computed(() => (props.totalItems === 0 ? 0 : (safePage.value - 1) * props.itemsPerPage + 1));
 const endItem = computed(() => Math.min(safePage.value * props.itemsPerPage, props.totalItems));
-const canGoPrevious = computed(() => safePage.value > 1);
-const canGoNext = computed(() => safePage.value < totalPages.value);
+const isLoading = computed(() => props.loadingPage !== null);
+const canGoPrevious = computed(() => safePage.value > 1 && !isLoading.value);
+const canGoNext = computed(() => safePage.value < totalPages.value && !isLoading.value);
 const visiblePages = computed(() => {
   const windowSize = 5;
   const halfWindow = Math.floor(windowSize / 2);
@@ -45,6 +49,8 @@ function clampPage(page: number): number {
 }
 
 function goToPage(page: number): void {
+  if (isLoading.value) return;
+
   const nextPage = clampPage(page);
   if (nextPage !== safePage.value) {
     emit('update:page', nextPage);
@@ -75,10 +81,18 @@ function goToPage(page: number): void {
           :variant="page === safePage ? 'default' : 'ghost'"
           size="xs"
           :aria-current="page === safePage ? 'page' : undefined"
-          :aria-label="`Page ${page}`"
+          :aria-busy="loadingPage === page"
+          :aria-label="loadingPage === page ? `Loading page ${page}` : `Page ${page}`"
+          :disabled="isLoading"
           @click="goToPage(page)"
         >
-          {{ page }}
+          <PhSpinner
+            v-if="loadingPage === page"
+            class="ui-pagination__spinner"
+            weight="bold"
+            aria-hidden="true"
+          />
+          <template v-else>{{ page }}</template>
         </Button>
       </div>
       <Button

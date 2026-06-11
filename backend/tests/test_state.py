@@ -64,6 +64,22 @@ def test_state_captures_status_change_events() -> None:
     assert summary["events"][0]["to"] == "degraded"
 
 
+def test_state_refresh_network_identity_applies_wifi_name() -> None:
+    target = Target("gateway", "127.0.0.1", "Loopback", "gateway")
+    state = MonitorState(
+        config(),
+        [target],
+        NetworkIdentity("Wi-Fi (en0)", None, "en0", "Wi-Fi"),
+        0,
+    )
+    state.append_sample(sample(target, True, 5, 1_000))
+
+    payload = state.refresh_network_identity("Office WiFi")
+
+    assert payload["network"]["ssid"] == "Office WiFi"
+    assert state.snapshot()["network"]["ssid"] == "Office WiFi"
+
+
 def test_state_persists_and_hydrates_status_events(tmp_path) -> None:
     target = Target("gateway", "127.0.0.1", "Loopback", "gateway")
     store = StatusStore(tmp_path / "status.sqlite3")

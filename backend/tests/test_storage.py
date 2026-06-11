@@ -218,6 +218,61 @@ def test_status_store_seeds_and_cruds_targets(tmp_path: Path) -> None:
     assert deleted is True
 
 
+def test_status_store_sets_target_favorite(tmp_path: Path) -> None:
+    db_path = tmp_path / "status.sqlite3"
+    store = StatusStore(db_path)
+
+    try:
+        store.seed_targets([Target("gateway", "127.0.0.1", "Loopback", "gateway")])
+        favorited = store.set_target_favorite("gateway", True)
+        listed = store.list_targets()
+    finally:
+        store.close()
+
+    assert favorited.is_favorite is True
+    assert listed[0].is_favorite is True
+
+    reopened = StatusStore(db_path)
+    try:
+        persisted = reopened.get_target("gateway")
+    finally:
+        reopened.close()
+
+    assert persisted is not None
+    assert persisted.is_favorite is True
+
+
+def test_status_store_reorders_targets(tmp_path: Path) -> None:
+    db_path = tmp_path / "status.sqlite3"
+    store = StatusStore(db_path)
+
+    try:
+        store.seed_targets([Target("gateway", "127.0.0.1", "Loopback", "gateway")])
+        second = store.create_target(
+            {
+                "label": "Example API",
+                "protocol": "http",
+                "type": "api",
+                "scope": "external",
+                "config": {"url": "https://example.com/health", "expectedStatus": 204},
+            }
+        )
+        third = store.create_target(
+            {
+                "label": "DNS",
+                "protocol": "icmp",
+                "scope": "external",
+                "config": {"host": "1.1.1.1"},
+            }
+        )
+        reordered = store.reorder_targets([third.id, "gateway", second.id])
+    finally:
+        store.close()
+
+    assert [target.id for target in reordered] == [third.id, "gateway", second.id]
+    assert [target.sort_order for target in reordered] == [0, 1, 2]
+
+
 def test_status_store_returns_target_results(tmp_path: Path) -> None:
     db_path = tmp_path / "status.sqlite3"
     store = StatusStore(db_path)
@@ -487,5 +542,48 @@ def test_status_store_clear_storage_scope(tmp_path: Path) -> None:
         result = store.clear_storage("incidents")
         assert result["deleted"]["incidents"] == 1
         assert result["stats"]["usage"]["incidents"] == 0
+    finally:
+        store.close()
+
+
+def test_status_store_clear_storage_rejects_unknown_scope(tmp_path: Path) -> None:
+    store = StatusStore(tmp_path / "status.sqlite3")
+
+    try:
+        try:
+            store.clear_storage("unknown")
+        except ValueError as error:
+            assert "scope must be one of" in str(error)
+        else:
+            raise AssertionError("expected clear_storage to reject unknown scopes")
+    finally:
+        store.close()
+
+
+def test_status_store_enforce_limits_trims_ping_samples(tmp_path: Path) -> None:
+    db_path = tmp_path / "status.sqlite3"
+    store = StatusStore(
+        db_path,
+        {
+            "autoPrune": True,
+            "limits": {
+                "maxDatabaseBytes": 52_428_800,
+                "maxIncidents": 10_000,
+                "maxPingSamples": 5,
+                "maxSpeedTests": 500,
+            },
+        },
+    )
+    monitor_config = config(db_path)
+    store.seed_targets([Target("gateway", "127.0.0.1", "Loopback", "gateway")])
+
+    try:
+        for index in range(12):
+            store.record_sample(sample(index * 1_000, True, 5.0), monitor_config)
+
+        stats = store.storage_stats()
+
+        assert stats["usage"]["pingSamples"] == 5
+        assert stats["percentUsed"]["pingSamples"] == 100.0
     finally:
         store.close()

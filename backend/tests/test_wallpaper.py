@@ -101,7 +101,7 @@ def test_wallpaper_api_returns_image_payload(tmp_path: Path) -> None:
     try:
         port = server.server_address[1]
         with (
-            patch("netbox.server.fetch_wallpaper", return_value=wallpaper),
+            patch("netbox.server.dispatch.fetch_wallpaper", return_value=wallpaper),
             urllib.request.urlopen(f"http://127.0.0.1:{port}/api/wallpaper", timeout=3) as response,
         ):
             body = json.load(response)

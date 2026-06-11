@@ -1,230 +1,73 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue';
-import { PhCaretDown, PhCaretUp, PhGlobeHemisphereWest, PhSpinner, PhWifiHigh } from '@phosphor-icons/vue';
-import { storeToRefs } from 'pinia';
+import {
+  PhCaretDown,
+  PhCaretUp,
+  PhDotsSixVertical,
+  PhGlobeHemisphereWest,
+  PhSpinner,
+  PhWifiHigh,
+} from '@phosphor-icons/vue';
+import { TransitionGroup } from 'vue';
 import { Button } from '../ui/button';
 import { Pagination } from '../ui/pagination';
-import { SectionModal } from '../ui/section-modal';
 import DashboardSectionCard from './DashboardSectionCard.vue';
+import TargetSourceDeleteModal from './TargetSourceDeleteModal.vue';
+import TargetSourceTestModal from './TargetSourceTestModal.vue';
 import TargetTaxonomyField from './TargetTaxonomyField.vue';
-import { canDeleteTaxonomyValue } from '../../targetTaxonomy';
-import { TARGETS_PAGE_SIZE } from '../../liveChecks';
-import {
-  defaultIntervalMs,
-  defaultTimeoutMs,
-  TARGET_PROTOCOLS,
-  TARGET_SCOPES,
-  TARGET_TYPES,
-  usePersonalisationStore,
-  targetColor,
-  useTargetsStore,
-} from '../../stores';
-import {
-  shouldShowScopeHeader,
-  targetScopeHint,
-  targetScopeLabel,
-} from '../../targetScope';
-import type { MonitorTarget, TargetScope } from '../../types';
+import { useTargetsConfigSection } from './useTargetsConfigSection';
+import { TARGET_PROTOCOLS, TARGET_SCOPES, TARGET_TYPES } from '../../stores';
+import { targetColorForSource } from '../../targetColors';
+import { targetScopeHint, targetScopeLabel } from '../../targetScope';
 
-const targetsStore = useTargetsStore();
-const personalisation = usePersonalisationStore();
-const { targetsPage, targetGroups, targetEnvironments } = storeToRefs(personalisation);
 const {
+  targetsStore,
+  personalisation,
+  targetsPage,
+  targetGroups,
+  targetEnvironments,
   sortedTargets,
   form,
   isEditing,
   isLoading,
   isSaving,
   checkingId,
+  isTestingForm,
+  isReordering,
   error,
-} = storeToRefs(targetsStore);
-
-const expandedTargetIds = ref<Set<string>>(new Set());
-const targetListScrollRef = ref<HTMLElement | null>(null);
-const deleteSourceModalOpen = ref(false);
-const pendingDeleteSource = ref<MonitorTarget | null>(null);
-const deletingSource = ref(false);
-
-const paginatedTargets = computed(() => {
-  const start = targetsPage.value * TARGETS_PAGE_SIZE;
-  return sortedTargets.value.slice(start, start + TARGETS_PAGE_SIZE);
-});
-
-const protocolLabel = computed(() => form.value.protocol.toUpperCase());
-
-const scopeCounts = computed(() => {
-  const counts = { gateway: 0, external: 0 };
-  for (const target of sortedTargets.value) {
-    counts[target.scope] += 1;
-  }
-  return counts;
-});
-
-function scopeMetaLabel(scope: TargetScope): string {
-  const count = scopeCounts.value[scope];
-  if (!count) return '';
-  const noun = count === 1 ? 'source' : 'sources';
-  return `${count} ${noun}`;
-}
-
-function targetSubtitle(target: MonitorTarget): string {
-  return `${target.protocol.toUpperCase()} · ${target.group} · ${target.environment}`;
-}
-
-const useGroupDropdown = computed(() => targetGroups.value.length > 0);
-const useEnvironmentDropdown = computed(() => targetEnvironments.value.length > 0);
-
-function canDeleteGroup(value: string): boolean {
-  return canDeleteTaxonomyValue(sortedTargets.value, 'group', value);
-}
-
-function canDeleteEnvironment(value: string): boolean {
-  return canDeleteTaxonomyValue(sortedTargets.value, 'environment', value);
-}
-
-async function createGroupValue(value: string): Promise<void> {
-  personalisation.addTargetGroup(value);
-  form.value.group = value;
-  await personalisation.syncPreferencesNow();
-}
-
-async function createEnvironmentValue(value: string): Promise<void> {
-  personalisation.addTargetEnvironment(value);
-  form.value.environment = value;
-  await personalisation.syncPreferencesNow();
-}
-
-async function removeGroupValue(value: string): Promise<void> {
-  if (!canDeleteGroup(value)) return;
-  personalisation.removeTargetGroup(value);
-  if (form.value.group === value) {
-    form.value.group = targetGroups.value[0] ?? 'Default';
-  }
-  await personalisation.syncPreferencesNow();
-}
-
-async function removeEnvironmentValue(value: string): Promise<void> {
-  if (!canDeleteEnvironment(value)) return;
-  personalisation.removeTargetEnvironment(value);
-  if (form.value.environment === value) {
-    form.value.environment = targetEnvironments.value[0] ?? 'local';
-  }
-  await personalisation.syncPreferencesNow();
-}
-
-function openDeleteSourceModal(target: MonitorTarget): void {
-  if (deletingSource.value) return;
-  pendingDeleteSource.value = target;
-  deleteSourceModalOpen.value = true;
-}
-
-function closeDeleteSourceModal(): void {
-  if (deletingSource.value) return;
-  deleteSourceModalOpen.value = false;
-  pendingDeleteSource.value = null;
-}
-
-async function confirmDeleteSource(): Promise<void> {
-  const target = pendingDeleteSource.value;
-  if (!target || deletingSource.value) return;
-
-  deletingSource.value = true;
-  try {
-    await targetsStore.removeTarget(target.id);
-    deleteSourceModalOpen.value = false;
-    pendingDeleteSource.value = null;
-  } finally {
-    deletingSource.value = false;
-  }
-}
-
-function isTargetExpanded(targetId: string): boolean {
-  return expandedTargetIds.value.has(targetId);
-}
-
-function targetToggleLabel(target: MonitorTarget): string {
-  return isTargetExpanded(target.id)
-    ? `Collapse ${target.label}`
-    : `Expand ${target.label}`;
-}
-
-async function toggleTarget(targetId: string): Promise<void> {
-  const wasExpanded = expandedTargetIds.value.has(targetId);
-  const next = new Set(expandedTargetIds.value);
-  if (next.has(targetId)) {
-    next.delete(targetId);
-  } else {
-    next.add(targetId);
-  }
-  expandedTargetIds.value = next;
-
-  if (!wasExpanded && next.has(targetId)) {
-    await nextTick();
-    targetListScrollRef.value
-      ?.querySelector<HTMLElement>(`[data-target-id="${targetId}"]`)
-      ?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-  }
-}
-
-async function expandTarget(targetId: string): Promise<void> {
-  if (expandedTargetIds.value.has(targetId)) return;
-  expandedTargetIds.value = new Set([...expandedTargetIds.value, targetId]);
-  await nextTick();
-  targetListScrollRef.value
-    ?.querySelector<HTMLElement>(`[data-target-id="${targetId}"]`)
-    ?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-}
-
-watch(
-  () => form.value.id,
-  (targetId) => {
-    if (targetId) expandTarget(targetId);
-  },
-);
-
-watch(
-  sortedTargets,
-  (targets) => {
-    personalisation.syncTargetTaxonomyFromTargets(targets);
-  },
-  { immediate: true },
-);
-
-watch(
-  () => sortedTargets.value.length,
-  (total) => {
-    const maxPage = Math.max(0, Math.ceil(total / TARGETS_PAGE_SIZE) - 1);
-    if (targetsPage.value > maxPage) {
-      personalisation.setTargetsPage(maxPage);
-    }
-  },
-);
-
-watch(
-  () => form.value.protocol,
-  (protocol) => {
-    if (isEditing.value) return;
-    form.value.intervalMs = defaultIntervalMs(protocol);
-    form.value.timeoutMs = defaultTimeoutMs(protocol);
-  },
-);
-
-watch(
-  () => form.value.type,
-  (type) => {
-    if (isEditing.value || type !== 'api') return;
-    if (form.value.protocol !== 'http' && form.value.protocol !== 'https') return;
-
-    try {
-      const parsed = new URL(form.value.url);
-      if (parsed.pathname && parsed.pathname !== '/') return;
-      parsed.pathname = '/health';
-      form.value.url = parsed.toString();
-    } catch {
-      // Ignore invalid URLs while the field is being edited.
-    }
-  },
-);
+  draggingId,
+  isSettling,
+  onPointerDown,
+  testModalOpen,
+  testResult,
+  testError,
+  targetListScrollRef,
+  deleteSourceModalOpen,
+  pendingDeleteSource,
+  deletingSource,
+  displayTargets,
+  protocolLabel,
+  scopeCounts,
+  scopeMetaLabel,
+  targetSubtitle,
+  useGroupDropdown,
+  useEnvironmentDropdown,
+  canDeleteGroup,
+  canDeleteEnvironment,
+  createGroupValue,
+  createEnvironmentValue,
+  removeGroupValue,
+  removeEnvironmentValue,
+  openDeleteSourceModal,
+  closeDeleteSourceModal,
+  confirmDeleteSource,
+  closeTestModal,
+  runFormTest,
+  addTargetFromTest,
+  isTargetExpanded,
+  targetToggleLabel,
+  toggleTarget,
+  TARGETS_PAGE_SIZE,
+} = useTargetsConfigSection();
 </script>
 
 <template>
@@ -401,14 +244,27 @@ watch(
         <p v-if="error" class="target-error">{{ error }}</p>
 
         <div class="target-actions">
-          <Button type="submit" size="sm" :disabled="isSaving">
+          <Button type="button" variant="ghost" size="sm" :disabled="isSaving || isTestingForm" @click="runFormTest">
+            <span v-if="isTestingForm" class="target-check-label">
+              <PhSpinner class="target-check-label__icon" weight="bold" aria-hidden="true" />
+              Testing<span class="pill__dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span>
+            </span>
+            <template v-else>Test</template>
+          </Button>
+          <Button type="submit" size="sm" :disabled="isSaving || isTestingForm">
             <span v-if="isSaving" class="target-check-label">
               <PhSpinner class="target-check-label__icon" weight="bold" aria-hidden="true" />
               {{ isEditing ? 'Saving' : 'Adding' }}<span class="pill__dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span>
             </span>
             <template v-else>{{ isEditing ? 'Save target' : 'Add target' }}</template>
           </Button>
-          <Button type="button" variant="ghost" size="sm" @click="targetsStore.resetForm">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            class="target-actions__reset"
+            @click="targetsStore.resetForm"
+          >
             {{ isEditing ? 'Cancel' : 'Reset' }}
           </Button>
         </div>
@@ -418,84 +274,85 @@ watch(
         <p v-if="!sortedTargets.length" class="empty target-list__empty">No targets configured yet.</p>
         <template v-else>
           <div ref="targetListScrollRef" class="target-list-scroll" :aria-busy="isLoading">
-            <div class="target-list">
-              <template v-for="(target, index) in paginatedTargets" :key="target.id">
-                <div
-                  v-if="shouldShowScopeHeader(paginatedTargets, index)"
-                  class="target-scope-head"
-                  role="presentation"
-                >
-                  <component
-                    :is="target.scope === 'gateway' ? PhWifiHigh : PhGlobeHemisphereWest"
-                    class="target-scope-head__icon"
-                    weight="bold"
-                    aria-hidden="true"
-                  />
-                  <span class="target-scope-head__label">{{ targetScopeLabel(target.scope) }}</span>
-                  <span class="target-scope-head__hint">{{ targetScopeHint(target.scope) }}</span>
-                </div>
-
-                <article
+            <TransitionGroup
+              name="target-reorder"
+              tag="div"
+              class="target-list"
+              :class="{ 'is-reorder-settling': isSettling }"
+            >
+              <article
+                v-for="target in displayTargets"
+                :key="target.id"
                 :data-target-id="target.id"
+                :data-reorder-id="target.id"
                 class="target-item"
                 :class="{
                   'is-disabled': !target.enabled,
                   'is-expanded': isTargetExpanded(target.id),
+                  'is-dragging': draggingId === target.id,
                 }"
               >
-                <button
-                  type="button"
-                  class="target-item__toggle"
-                  :aria-expanded="isTargetExpanded(target.id)"
-                  :aria-label="targetToggleLabel(target)"
-                  @click="toggleTarget(target.id)"
-                >
-                  <span class="target-item__summary">
-                    <span
-                      class="target-item__color"
-                      :style="{ backgroundColor: targetColor(target.config, sortedTargets.findIndex((entry) => entry.id === target.id)) }"
+                  <button
+                    type="button"
+                    class="target-drag-handle target-item__drag"
+                    :aria-label="`Reorder ${target.label}`"
+                    :disabled="isReordering || isSaving"
+                    @pointerdown="onPointerDown(target.id, $event)"
+                  >
+                    <PhDotsSixVertical weight="bold" aria-hidden="true" />
+                  </button>
+                  <button
+                    type="button"
+                    class="target-item__toggle"
+                    :aria-expanded="isTargetExpanded(target.id)"
+                    :aria-label="targetToggleLabel(target)"
+                    @click="toggleTarget(target.id)"
+                  >
+                    <span class="target-item__summary">
+                      <span
+                        class="target-item__color"
+                        :style="{ backgroundColor: targetColorForSource(target.config, target.id) }"
+                        aria-hidden="true"
+                      />
+                      <strong class="target-item__label">{{ target.label }}</strong>
+                      <span class="target-item__badges">
+                        <span class="target-item__badge target-item__badge--scope">{{ targetScopeLabel(target.scope) }}</span>
+                        <span class="target-item__badge">{{ target.enabled ? 'enabled' : 'paused' }}</span>
+                      </span>
+                    </span>
+                    <PhCaretDown
+                      v-if="!isTargetExpanded(target.id)"
+                      class="target-item__chevron"
+                      weight="bold"
                       aria-hidden="true"
                     />
-                    <strong class="target-item__label">{{ target.label }}</strong>
-                    <span class="target-item__badges">
-                      <span class="target-item__badge target-item__badge--scope">{{ targetScopeLabel(target.scope) }}</span>
-                      <span class="target-item__badge">{{ target.enabled ? 'enabled' : 'paused' }}</span>
-                    </span>
-                  </span>
-                  <PhCaretDown
-                    v-if="!isTargetExpanded(target.id)"
-                    class="target-item__chevron"
-                    weight="bold"
-                    aria-hidden="true"
-                  />
-                  <PhCaretUp v-else class="target-item__chevron" weight="bold" aria-hidden="true" />
-                </button>
+                    <PhCaretUp v-else class="target-item__chevron" weight="bold" aria-hidden="true" />
+                  </button>
 
-                <div v-show="isTargetExpanded(target.id)" class="target-item__body">
-                  <small>{{ target.host }} · {{ targetSubtitle(target) }}</small>
-                  <div class="target-item__actions">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="xs"
-                      @click="targetsStore.runCheckNow(target.id)"
-                      :disabled="checkingId === target.id"
-                    >
-                      <span v-if="checkingId === target.id" class="target-check-label">
-                        <PhSpinner class="target-check-label__icon" weight="bold" aria-hidden="true" />
-                        Checking<span class="pill__dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span>
-                      </span>
-                      <template v-else>Check</template>
-                    </Button>
-                    <Button type="button" variant="ghost" size="xs" @click="targetsStore.editTarget(target)">Edit</Button>
-                    <Button type="button" variant="ghost" size="xs" @click="openDeleteSourceModal(target)">
-                      Delete
-                    </Button>
+                  <div v-show="isTargetExpanded(target.id)" class="target-item__body">
+                    <small>{{ target.host }} · {{ targetSubtitle(target) }}</small>
+                    <div class="target-item__actions">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="xs"
+                        @click="targetsStore.runCheckNow(target.id)"
+                        :disabled="checkingId === target.id"
+                      >
+                        <span v-if="checkingId === target.id" class="target-check-label">
+                          <PhSpinner class="target-check-label__icon" weight="bold" aria-hidden="true" />
+                          Checking<span class="pill__dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span>
+                        </span>
+                        <template v-else>Check</template>
+                      </Button>
+                      <Button type="button" variant="ghost" size="xs" @click="targetsStore.editTarget(target)">Edit</Button>
+                      <Button type="button" variant="ghost" size="xs" @click="openDeleteSourceModal(target)">
+                        Delete
+                      </Button>
+                    </div>
                   </div>
-                </div>
-                </article>
-              </template>
-            </div>
+              </article>
+            </TransitionGroup>
           </div>
 
           <Pagination
@@ -511,30 +368,21 @@ watch(
     </div>
   </DashboardSectionCard>
 
-  <Teleport to="body">
-    <div v-if="deleteSourceModalOpen" class="target-taxonomy-modal">
-      <SectionModal mode="modal" title="Delete source" @close="closeDeleteSourceModal">
-        <div class="target-taxonomy-modal__form">
-          <p class="target-taxonomy-modal__message">
-            Delete <strong>{{ pendingDeleteSource?.label }}</strong>? This removes the monitor source and its
-            configuration.
-          </p>
-          <div class="target-taxonomy-modal__actions">
-            <Button type="button" variant="ghost" size="sm" :disabled="deletingSource" @click="closeDeleteSourceModal">
-              Cancel
-            </Button>
-            <Button type="button" size="sm" :disabled="deletingSource" @click="confirmDeleteSource">
-              <PhSpinner
-                v-if="deletingSource"
-                class="target-taxonomy-modal__spinner"
-                weight="bold"
-                aria-hidden="true"
-              />
-              <span>{{ deletingSource ? 'Deleting' : 'Delete' }}</span>
-            </Button>
-          </div>
-        </div>
-      </SectionModal>
-    </div>
-  </Teleport>
+  <TargetSourceDeleteModal
+    :open="deleteSourceModalOpen"
+    :target="pendingDeleteSource"
+    :deleting="deletingSource"
+    @close="closeDeleteSourceModal"
+    @confirm="confirmDeleteSource"
+  />
+
+  <TargetSourceTestModal
+    :open="testModalOpen"
+    :loading="isTestingForm"
+    :result="testResult"
+    :error="testError"
+    :can-add="!isEditing"
+    @close="closeTestModal"
+    @add="addTargetFromTest"
+  />
 </template>

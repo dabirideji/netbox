@@ -107,6 +107,16 @@ describe('shadcn-style UI primitives', () => {
     expect(wrapper.find('.donut-card__legend-item').exists()).toBe(true);
   });
 
+  it('shows a spinner on the loading page button', () => {
+    const wrapper = mount(Pagination, {
+      props: { currentPage: 4, totalItems: 95, itemsPerPage: 10, loadingPage: 4 },
+    });
+
+    const activePage = wrapper.find('.ui-pagination__pages button[aria-current="page"]');
+    expect(activePage.find('.ui-pagination__spinner').exists()).toBe(true);
+    expect(activePage.text()).not.toContain('4');
+  });
+
   it('disables pagination boundaries', () => {
     const wrapper = mount(Pagination, {
       props: { currentPage: 1, totalItems: 3, itemsPerPage: 10 },

@@ -2,14 +2,17 @@ import { defineStore } from 'pinia';
 import { ref, shallowRef } from 'vue';
 import { fetchStatus } from '../api';
 import { formatClock } from '../format';
-import type { StatusSummary, StreamPayload } from '../types';
+import { CONNECTION_STATE } from '../responses';
+import type { MonitorTarget, StatusSummary, StreamPayload } from '../types';
 import { coalesceToAnimationFrame } from '../utils/schedule';
+import { reorderTargetsByIds } from '../targetOrder';
+import { handleAlertNotification } from '../composables/useAlertNotifications';
 import { slimStatusSummary } from '../utils/monitorPersist';
 import { useHistoryStore } from './history';
 import { useSpeedTestStore } from './speedTest';
 import { useTargetsStore } from './targets';
 
-export const RECONNECTING_STATE = 'Reconnecting';
+export const RECONNECTING_STATE = CONNECTION_STATE.reconnecting.label;
 
 export function isReconnectingState(state: string): boolean {
   return state.startsWith(RECONNECTING_STATE);
@@ -19,7 +22,7 @@ export const useMonitorStore = defineStore(
   'monitor',
   () => {
     const summary = shallowRef<StatusSummary | null>(null);
-    const connectionState = ref('Not connected');
+    const connectionState = ref<string>(CONNECTION_STATE.notConnected.label);
 
     const pendingPayloads: StreamPayload[] = [];
     const flushStreamPayloads = coalesceToAnimationFrame(() => {
@@ -36,7 +39,9 @@ export const useMonitorStore = defineStore(
         summary.value = await fetchStatus();
         connectionState.value = `Updated ${formatClock(summary.value.now)}`;
       } catch {
-        connectionState.value = summary.value ? connectionState.value : 'Unavailable';
+        connectionState.value = summary.value
+          ? connectionState.value
+          : CONNECTION_STATE.unavailable.label;
       }
     }
 
@@ -59,9 +64,16 @@ export const useMonitorStore = defineStore(
 
       if (payload.type === 'targets') {
         useTargetsStore().applyTargets(payload.targets);
+        syncSummaryTargets(payload.targets);
       }
 
-      connectionState.value = summary.value ? `Updated ${formatClock(summary.value.now)}` : 'Connected';
+      if (payload.type === 'alert') {
+        void handleAlertNotification(payload.alert);
+      }
+
+      connectionState.value = summary.value
+        ? `Updated ${formatClock(summary.value.now)}`
+        : CONNECTION_STATE.connected.label;
     }
 
     function applyStreamPayload(payload: StreamPayload): void {
@@ -77,6 +89,52 @@ export const useMonitorStore = defineStore(
       useHistoryStore().seedFromSummary(summary.value?.events ?? [], pageSize);
     }
 
+    function reorderSummaryTargets(order: string[]): void {
+      if (!summary.value) return;
+
+      const currentOrder = summary.value.targets.map((target) => target.id);
+      if (currentOrder.length === order.length && currentOrder.every((id, index) => id === order[index])) {
+        return;
+      }
+
+      const reordered = reorderTargetsByIds(summary.value.targets, order);
+      if (reordered.length !== summary.value.targets.length) return;
+
+      summary.value = {
+        ...summary.value,
+        targets: reordered,
+      };
+    }
+
+    function setTargetFavorite(targetId: string, favorite: boolean): void {
+      if (!summary.value) return;
+
+      summary.value = {
+        ...summary.value,
+        targets: summary.value.targets.map((target) =>
+          target.id === targetId ? { ...target, isFavorite: favorite } : target,
+        ),
+      };
+    }
+
+    function syncSummaryTargets(targets: MonitorTarget[]): void {
+      if (!summary.value) return;
+
+      const byId = new Map(targets.map((target) => [target.id, target]));
+      summary.value = {
+        ...summary.value,
+        targets: summary.value.targets.map((target) => {
+          const stored = byId.get(target.id);
+          if (!stored) return target;
+          return {
+            ...target,
+            isFavorite: stored.isFavorite ?? false,
+          };
+        }),
+      };
+      reorderSummaryTargets(targets.map((target) => target.id));
+    }
+
     return {
       summary,
       connectionState,
@@ -84,6 +142,9 @@ export const useMonitorStore = defineStore(
       applyStreamPayload,
       setConnectionState,
       seedEventsFromSummary,
+      reorderSummaryTargets,
+      setTargetFavorite,
+      syncSummaryTargets,
     };
   },
   {

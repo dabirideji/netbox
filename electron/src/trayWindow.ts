@@ -1,4 +1,4 @@
-import { BrowserWindow, Tray, ipcMain, nativeTheme, screen } from 'electron';
+import { BrowserWindow, Tray, ipcMain, nativeTheme, screen, type IpcMainEvent } from 'electron';
 import path from 'node:path';
 import { APP_NAME } from './constants';
 import {
@@ -18,6 +18,8 @@ let themeListenerAttached = false;
 let compactMode = getTrayPrefs().compact;
 let trayMenuSync: ((compact: boolean) => void) | null = null;
 let suppressPositionSave = false;
+let trayDragging = false;
+let trayDragOffset: TrayPosition | null = null;
 
 function trayBackgroundColor(): string {
   return nativeTheme.shouldUseDarkColors ? '#09090b' : '#fafafa';
@@ -212,10 +214,6 @@ export function ensureTrayWindow(origin: string, tray?: Tray | null): BrowserWin
     showTrayAtPreferredPosition(trayWindow, tray);
   });
 
-  trayWindow.on('blur', () => {
-    trayWindow?.hide();
-  });
-
   trayWindow.on('closed', () => {
     trayWindow = null;
   });
@@ -249,8 +247,60 @@ export function closeTrayWindow(): void {
   trayWindow = null;
 }
 
+function trayWindowFromEvent(event: IpcMainEvent): BrowserWindow | null {
+  const window = BrowserWindow.fromWebContents(event.sender);
+  if (!window || window.isDestroyed()) {
+    return null;
+  }
+  return window;
+}
+
 export function registerTrayWindowHandlers(getTray: () => Tray | null): void {
   ipcMain.on('tray:set-compact', (_event, compact: unknown) => {
     void setTrayCompactMode(Boolean(compact), getTray(), { syncRenderer: false });
+  });
+
+  ipcMain.on('tray:drag-start', (event, screenX: unknown, screenY: unknown) => {
+    const window = trayWindowFromEvent(event);
+    if (!window || typeof screenX !== 'number' || typeof screenY !== 'number') {
+      return;
+    }
+
+    const [x, y] = window.getPosition();
+    trayDragging = true;
+    trayDragOffset = {
+      x: screenX - x,
+      y: screenY - y,
+    };
+  });
+
+  ipcMain.on('tray:drag-move', (event, screenX: unknown, screenY: unknown) => {
+    const window = trayWindowFromEvent(event);
+    if (!window || !trayDragOffset || typeof screenX !== 'number' || typeof screenY !== 'number') {
+      return;
+    }
+
+    const bounds = window.getBounds();
+    const position = clampTrayPosition(
+      Math.round(screenX - trayDragOffset.x),
+      Math.round(screenY - trayDragOffset.y),
+      bounds.width,
+      bounds.height,
+    );
+    setTrayWindowPosition(window, position);
+  });
+
+  ipcMain.on('tray:drag-end', () => {
+    trayDragging = false;
+    trayDragOffset = null;
+  });
+
+  ipcMain.on('tray:hide', (event) => {
+    const window = trayWindowFromEvent(event);
+    if (!window || window.isDestroyed()) {
+      hideTrayWindow();
+      return;
+    }
+    window.hide();
   });
 }

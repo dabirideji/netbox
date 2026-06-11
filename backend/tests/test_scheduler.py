@@ -92,3 +92,50 @@ def test_state_check_now_persists_result(monkeypatch, tmp_path: Path) -> None:
 
     assert response["result"]["ok"] is True
     assert results["total"] == 1
+
+
+def test_state_preview_target_check_does_not_persist(monkeypatch, tmp_path: Path) -> None:
+    target = Target("up", "127.0.0.1", "Up", "gateway")
+    store = StatusStore(tmp_path / "status.sqlite3")
+    store.seed_targets([target])
+    state = MonitorState(
+        config(str(tmp_path / "status.sqlite3")),
+        [target],
+        NetworkIdentity("Test", None, None, None),
+        0,
+        store,
+    )
+
+    def fake_run_check(check_target: Target) -> PingResult:
+        return PingResult(
+            check_target.id,
+            check_target.host,
+            check_target.label,
+            check_target.scope,
+            True,
+            4.2,
+            2_000,
+            3,
+            None,
+        )
+
+    monkeypatch.setattr("netbox.state.run_check", fake_run_check)
+
+    try:
+        response = state.preview_target_check(
+            {
+                "label": "Preview DNS",
+                "type": "dns",
+                "protocol": "dns",
+                "scope": "external",
+                "config": {"name": "example.com", "recordType": "A"},
+            }
+        )
+        results = store.target_results(target.id, limit=10)
+    finally:
+        store.close()
+
+    assert response["preview"] is True
+    assert response["result"]["ok"] is True
+    assert response["status"] == "operational"
+    assert results["total"] == 0

@@ -22,11 +22,16 @@ History and incident endpoints share bounded date filters:
 | `limit` | integer | No | Incident page size, `1` to `500`. Defaults to `50`. |
 | `offset` | integer | No | Incident offset, `0` to `100000`. Defaults to `0`. |
 
-Invalid query values return `400` with an error payload:
+Invalid query values return `400` with a structured error payload:
 
 ```json
-{ "error": "from must be less than or equal to to" }
+{
+  "code": "API-4001",
+  "error": "from must be less than or equal to to"
+}
 ```
+
+Stable response codes are defined in `backend/src/netbox/responses.py` and mirrored in `frontend/src/responses.ts`.
 
 ## `GET /api/status`
 
@@ -76,11 +81,14 @@ Returns aggregated persisted history for the overview chart.
 }
 ```
 
-Severity mapping:
+Monitor status and severity mapping:
 
-- `0`: operational
-- `1`: degraded
-- `2`: down
+| Status | Code | Severity |
+| --- | --- | --- |
+| `operational` | `MON-000` | `0` |
+| `degraded` | `MON-110` | `1` |
+| `down` | `MON-120` | `2` |
+| `unknown` | `MON-900` | `0` |
 
 ## `GET /api/targets/history`
 
@@ -167,6 +175,52 @@ Partially updates one target. SQLite remains the source of truth after seeding.
 ### `DELETE /api/targets/{id}`
 
 Deletes the target configuration. Historical check rows are retained.
+
+### `POST /api/targets/preview-check`
+
+Runs one immediate check from an unsaved target payload without creating or updating the target.
+
+```json
+{
+  "label": "API health",
+  "type": "api",
+  "protocol": "https",
+  "scope": "external",
+  "group": "Default",
+  "environment": "local",
+  "enabled": true,
+  "intervalMs": 5000,
+  "timeoutMs": 10000,
+  "config": {
+    "url": "https://example.com/health",
+    "method": "GET",
+    "expectedStatus": 200
+  }
+}
+```
+
+Response:
+
+```json
+{
+  "preview": true,
+  "status": "operational",
+  "severity": 0,
+  "result": {
+    "id": "api-health-example-com",
+    "host": "example.com",
+    "label": "API health",
+    "scope": "external",
+    "type": "api",
+    "protocol": "https",
+    "ok": true,
+    "latencyMs": 42.1,
+    "checkedAt": 1781090060000,
+    "durationMs": 41,
+    "error": null
+  }
+}
+```
 
 ### `POST /api/targets/{id}/check-now`
 

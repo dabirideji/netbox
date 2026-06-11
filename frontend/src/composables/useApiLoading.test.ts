@@ -81,7 +81,7 @@ describe('apiFetch loading integration', () => {
     const { fetchStatus } = await import('../api');
     const { apiPendingCount } = useApiLoading();
 
-    await expect(fetchStatus()).rejects.toThrow('Status request failed: 503');
+    await expect(fetchStatus()).rejects.toThrow('Backend unavailable. Start the monitor with make run.');
     expect(apiPendingCount.value).toBe(0);
   });
 });

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, Tray, dialog, nativeImage, shell } from 'electron';
+import { app, BrowserWindow, Menu, Tray, dialog, ipcMain, nativeImage, shell } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { autoUpdater } from 'electron-updater';
@@ -10,6 +10,7 @@ import {
   userDatabasePath,
 } from './backend';
 import { APP_NAME, DEFAULT_BACKEND_PORT } from './constants';
+import { requestWifiNetworkAccess } from './networkAccess';
 import {
   closeTrayWindow,
   hideTrayWindow,
@@ -43,10 +44,21 @@ function loadingPagePath(): string {
   return path.join(__dirname, '..', 'resources', 'loading.html');
 }
 
+function buildIconPath(iconName: string): string {
+  return path.join(__dirname, '..', 'build', iconName);
+}
+
+function appIconPath(): string {
+  if (process.platform === 'darwin' && fs.existsSync(buildIconPath('icon.icns'))) {
+    return buildIconPath('icon.icns');
+  }
+  return buildIconPath('icon.png');
+}
+
 function trayIconPath(): string {
   const iconName =
-    process.platform === 'win32' ? 'icon.ico' : process.platform === 'darwin' ? 'iconTemplate.png' : 'icon.png';
-  return path.join(__dirname, '..', 'build', iconName);
+    process.platform === 'win32' ? 'icon.ico' : process.platform === 'darwin' ? 'iconTemplate.png' : 'icon-tray.png';
+  return buildIconPath(iconName);
 }
 
 function createTrayIcon() {
@@ -58,7 +70,7 @@ function createTrayIcon() {
     }
     return image;
   }
-  return nativeImage.createFromPath(path.join(__dirname, '..', 'build', 'icon.png'));
+  return nativeImage.createFromPath(buildIconPath('icon.png'));
 }
 
 function applyLoginItemSettings(): void {
@@ -151,6 +163,7 @@ function createSplashWindow(): void {
     show: true,
     frame: true,
     title: APP_NAME,
+    icon: appIconPath(),
     autoHideMenuBar: true,
     webPreferences: {
       sandbox: true,
@@ -167,6 +180,7 @@ function createMainWindow(origin: string): void {
     minHeight: 640,
     show: false,
     title: APP_NAME,
+    icon: appIconPath(),
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -214,6 +228,45 @@ function showMainWindow(): void {
   mainWindow.focus();
 }
 
+function registerNetworkHandlers(): void {
+  ipcMain.handle('network:request-access', async () => {
+    const result = await requestWifiNetworkAccess();
+
+    if (!backend?.origin) {
+      return result;
+    }
+
+    try {
+      const response = await fetch(`${backend.origin}/api/network/refresh`, {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(result.ssid ? { wifiName: result.ssid } : {}),
+      });
+
+      if (!response.ok && result.ssid) {
+        return {
+          ...result,
+          ok: false,
+          message: 'Wi-Fi name detected, but Netbox could not refresh the dashboard.',
+        };
+      }
+    } catch {
+      if (result.ssid) {
+        return {
+          ...result,
+          ok: false,
+          message: 'Wi-Fi name detected, but Netbox could not reach the local monitor.',
+        };
+      }
+    }
+
+    return result;
+  });
+}
+
 async function boot(): Promise<void> {
   fs.mkdirSync(path.dirname(userDatabasePath()), { recursive: true });
   createSplashWindow();
@@ -233,7 +286,7 @@ async function boot(): Promise<void> {
     const message = error instanceof Error ? error.message : 'Unknown startup error';
     const detail = isPackagedApp()
       ? `${message}\n\nTry reinstalling Netbox or open the data folder from the tray menu.`
-      : `${message}\n\nFor development, run:\n  make build\n  make electron-dev`;
+      : `${message}\n\nFor development, run:\n  make desktop`;
     dialog.showErrorBox('Netbox could not start', detail);
     quitting = true;
     app.quit();
@@ -241,6 +294,7 @@ async function boot(): Promise<void> {
 }
 
 app.whenReady().then(async () => {
+  registerNetworkHandlers();
   registerTrayWindowHandlers(() => tray);
   applyLoginItemSettings();
   if (isPackagedApp() && process.env.NETBOX_AUTO_UPDATE !== '0') {

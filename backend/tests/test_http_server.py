@@ -458,6 +458,82 @@ def test_status_server_cruds_targets(tmp_path: Path) -> None:
         store.close()
 
 
+def test_status_server_reorders_targets(tmp_path: Path) -> None:
+    (tmp_path / "index.html").write_text("<div id='app'>ok</div>")
+    store = StatusStore(tmp_path / "status.sqlite3")
+    store.seed_targets([Target("gateway", "127.0.0.1", "Loopback", "gateway")])
+    created = store.create_target(
+        {
+            "label": "Example",
+            "protocol": "tcp",
+            "type": "port",
+            "scope": "external",
+            "config": {"host": "example.com", "port": 443},
+        }
+    )
+    state = MonitorState(config(), store.list_targets(), NetworkIdentity("Test", "Test", "en0", "Wi-Fi"), 0, store)
+    server = StatusServer(("127.0.0.1", 0), StatusHandler, state, tmp_path)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+
+    try:
+        port = server.server_address[1]
+        reorder_request = urllib.request.Request(
+            f"http://127.0.0.1:{port}/api/targets/order",
+            data=json.dumps({"order": [created.id, "gateway"]}).encode(),
+            method="PATCH",
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(reorder_request, timeout=3) as response:
+            payload = json.load(response)
+
+        assert [target["id"] for target in payload["targets"]] == [created.id, "gateway"]
+        assert [target["sortOrder"] for target in payload["targets"]] == [0, 1]
+    finally:
+        state.stopping.set()
+        server.shutdown()
+        server.server_close()
+        store.close()
+
+
+def test_status_server_sets_target_favorite(tmp_path: Path) -> None:
+    (tmp_path / "index.html").write_text("<div id='app'>ok</div>")
+    store = StatusStore(tmp_path / "status.sqlite3")
+    store.seed_targets([Target("gateway", "127.0.0.1", "Loopback", "gateway")])
+    state = MonitorState(config(), store.list_targets(), NetworkIdentity("Test", "Test", "en0", "Wi-Fi"), 0, store)
+    server = StatusServer(("127.0.0.1", 0), StatusHandler, state, tmp_path)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+
+    try:
+        port = server.server_address[1]
+        favorite_request = urllib.request.Request(
+            f"http://127.0.0.1:{port}/api/targets/gateway/favorite",
+            data=json.dumps({"favorite": True}).encode(),
+            method="PATCH",
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(favorite_request, timeout=3) as response:
+            payload = json.load(response)
+
+        assert payload["target"]["isFavorite"] is True
+
+        status_request = urllib.request.Request(
+            f"http://127.0.0.1:{port}/api/status",
+            headers={"Accept": "application/json"},
+        )
+        with urllib.request.urlopen(status_request, timeout=3) as response:
+            status_payload = json.load(response)
+
+        gateway = next(target for target in status_payload["targets"] if target["id"] == "gateway")
+        assert gateway["isFavorite"] is True
+    finally:
+        state.stopping.set()
+        server.shutdown()
+        server.server_close()
+        store.close()
+
+
 def test_status_server_rejects_invalid_target_payload(tmp_path: Path) -> None:
     (tmp_path / "index.html").write_text("<div id='app'>ok</div>")
     store = StatusStore(tmp_path / "status.sqlite3")
