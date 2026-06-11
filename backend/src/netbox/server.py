@@ -9,7 +9,7 @@ import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 from netbox.state import MonitorState
 from netbox.wallpaper import fetch_wallpaper
@@ -58,7 +58,7 @@ class StatusHandler(BaseHTTPRequestHandler):
     """Request handler for JSON APIs, SSE, and built frontend assets."""
 
     server_version = "Netbox/1.0"
-    max_json_body_bytes = 16_384
+    max_json_body_bytes = 65_536
 
     @property
     def app_server(self) -> StatusServer:
@@ -95,6 +95,40 @@ class StatusHandler(BaseHTTPRequestHandler):
                         query["points"],
                         query["from"],
                         query["to"],
+                    )
+                )
+                return
+
+            if route == "/api/targets":
+                self.write_json(self.app_server.state.list_targets())
+                return
+
+            target_route = parse_target_route(route)
+            if target_route and len(target_route) == 1:
+                self.write_json(self.app_server.state.get_target(target_route[0]))
+                return
+
+            if target_route and len(target_route) == 2 and target_route[1] == "results":
+                query = parse_query(parsed_url.query)
+                self.write_json(
+                    self.app_server.state.target_results(
+                        target_route[0],
+                        query["limit"],
+                        query["from"],
+                        query["to"],
+                        query["offset"],
+                    )
+                )
+                return
+
+            if route == "/api/incidents":
+                query = parse_query(parsed_url.query)
+                self.write_json(
+                    self.app_server.state.incidents(
+                        query["limit"],
+                        query["from"],
+                        query["to"],
+                        query["offset"],
                     )
                 )
                 return
@@ -151,6 +185,15 @@ class StatusHandler(BaseHTTPRequestHandler):
         route = parsed_url.path
 
         try:
+            if route == "/api/targets":
+                self.write_json(self.app_server.state.create_target(self.read_json_body()), status=201)
+                return
+
+            target_route = parse_target_route(route)
+            if target_route and len(target_route) == 2 and target_route[1] == "check-now":
+                self.write_json(self.app_server.state.check_now(target_route[0]), status=202)
+                return
+
             if route == "/api/speed-tests":
                 self.write_json(self.app_server.state.record_speed_test(self.read_json_body()), status=201)
                 return
@@ -175,10 +218,33 @@ class StatusHandler(BaseHTTPRequestHandler):
         route = parsed_url.path
 
         try:
+            target_route = parse_target_route(route)
+            if target_route and len(target_route) == 1:
+                self.write_json(
+                    self.app_server.state.update_target(target_route[0], self.read_json_body()),
+                )
+                return
+
             if route == "/api/preferences":
                 self.write_json(
                     self.app_server.state.update_preferences(self.read_json_body()),
                 )
+                return
+        except ValueError as error:
+            self.write_json({"error": str(error)}, status=400)
+            return
+
+        self.send_error(404, "Not found")
+
+    def do_DELETE(self) -> None:
+        """Route JSON DELETE requests to destructive APIs."""
+
+        parsed_url = urlparse(self.path)
+        target_route = parse_target_route(parsed_url.path)
+
+        try:
+            if target_route and len(target_route) == 1:
+                self.write_json(self.app_server.state.delete_target(target_route[0]))
                 return
         except ValueError as error:
             self.write_json({"error": str(error)}, status=400)
@@ -282,6 +348,19 @@ def is_within(path: Path, parent: Path) -> bool:
         return True
     except ValueError:
         return False
+
+
+def parse_target_route(route: str) -> list[str] | None:
+    """Parse `/api/targets/{id}` style routes."""
+
+    prefix = "/api/targets/"
+    if not route.startswith(prefix):
+        return None
+
+    remainder = route[len(prefix) :].strip("/")
+    if not remainder:
+        return None
+    return [unquote(part) for part in remainder.split("/") if part]
 
 
 def parse_query(query: str) -> dict[str, int | None]:

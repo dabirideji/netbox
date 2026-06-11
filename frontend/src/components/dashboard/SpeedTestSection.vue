@@ -3,7 +3,7 @@ import { computed } from 'vue';
 import { Button } from '../ui/button';
 import { resolveGaugeMaxMbps, SpeedArcGauge } from '../ui/gauge';
 import { Pagination } from '../ui/pagination';
-import { formatClock, formatDate, formatMbps, formatMs } from '../../format';
+import { formatDateTime, formatMbps, formatMs } from '../../format';
 import type { SpeedTestPolicy, SpeedTestResult, SpeedTestStats } from '../../types';
 import type { SpeedTestProgress } from '../../speed-test';
 import DashboardSectionCard from './DashboardSectionCard.vue';
@@ -109,7 +109,11 @@ const minIntervalLabel = computed(() => {
 
         <div class="speed-actions">
           <Button size="xs" :disabled="!canStartSpeedTest" @click="emit('startSpeedTest')">
-            {{ speedButtonLabel }}
+            <span v-if="isSpeedRunning" class="speed-running-label">
+              <PhSpinner class="speed-running-label__icon" weight="bold" aria-hidden="true" />
+              {{ speedButtonLabel }}
+            </span>
+            <template v-else>{{ speedButtonLabel }}</template>
           </Button>
           <span class="speed-phase" :class="speedProgress.phase">{{ speedProgress.message }}</span>
         </div>
@@ -210,8 +214,7 @@ const minIntervalLabel = computed(() => {
           <span role="cell">{{ formatMbps(test.uploadMbps) }}</span>
           <span role="cell">{{ formatMs(test.latencyMs) }}</span>
           <time role="cell" :datetime="new Date(test.testedAt).toISOString()">
-            <span>{{ formatClock(test.testedAt) }}</span>
-            <small>{{ formatDate(test.testedAt) }}</small>
+            {{ formatDateTime(test.testedAt) }}
           </time>
         </article>
       </div>

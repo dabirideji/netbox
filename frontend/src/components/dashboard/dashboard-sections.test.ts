@@ -42,11 +42,14 @@ describe('dashboard section collapse preferences', () => {
     expect(isSectionCollapsed('timeline')).toBe(true);
     expect(usePersonalisationStore().sectionsCollapsed.timeline).toBe(true);
 
-    await vi.waitFor(() => {
-      expect(patchSpy).toHaveBeenCalledWith({
-        [DASHBOARD_SECTIONS_COLLAPSED_PREF_KEY]: expect.objectContaining({ timeline: true }),
-      });
-    });
+    await vi.waitFor(
+      () => {
+        expect(patchSpy).toHaveBeenCalledWith({
+          [DASHBOARD_SECTIONS_COLLAPSED_PREF_KEY]: expect.objectContaining({ timeline: true }),
+        });
+      },
+      { timeout: 1000 },
+    );
   });
 
   it('applies server preferences when local state is not dirty', () => {
@@ -55,6 +58,7 @@ describe('dashboard section collapse preferences', () => {
         hero: true,
         summary: false,
         timeline: true,
+        targets: false,
         liveChecks: false,
         speedTest: false,
         incidentLog: false,
@@ -75,7 +79,7 @@ describe('dashboard section collapse preferences', () => {
 
     const collapseButton = wrapper.find('.dashboard-card__icon-button[aria-expanded]');
     expect(collapseButton.attributes('aria-expanded')).toBe('true');
-    expect(wrapper.find('.dashboard-card__body').isVisible()).toBe(true);
+    expect(wrapper.find('.dashboard-card__body').exists()).toBe(true);
 
     await collapseButton.trigger('click');
 

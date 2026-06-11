@@ -1,4 +1,146 @@
 {
+  "targets": [
+    {
+      "id": "jobbox-website",
+      "host": "getjobbox.com",
+      "label": "Jobbox",
+      "scope": "external",
+      "type": "website",
+      "protocol": "https",
+      "group": "Default",
+      "environment": "local",
+      "enabled": true,
+      "intervalMs": 5000,
+      "timeoutMs": 10000,
+      "config": {
+        "url": "https://getjobbox.com",
+        "method": "GET",
+        "expectedStatus": 200
+      }
+    },
+    {
+      "id": "jobbox-api-health",
+      "host": "api.getjobbox.com",
+      "label": "JobBox API Health",
+      "scope": "external",
+      "type": "api",
+      "protocol": "https",
+      "group": "Default",
+      "environment": "local",
+      "enabled": true,
+      "intervalMs": 5000,
+      "timeoutMs": 10000,
+      "config": {
+        "url": "https://api.getjobbox.com/health",
+        "method": "GET",
+        "expectedStatus": 200
+      }
+    },
+    {
+      "id": "example-website",
+      "host": "example.com",
+      "label": "Example.com",
+      "scope": "external",
+      "type": "website",
+      "protocol": "https",
+      "group": "Default",
+      "environment": "local",
+      "enabled": true,
+      "intervalMs": 5000,
+      "timeoutMs": 10000,
+      "config": {
+        "url": "https://example.com",
+        "method": "GET",
+        "expectedStatus": 200
+      }
+    },
+    {
+      "id": "example-icmp",
+      "host": "1.1.1.1",
+      "label": "ICMP example",
+      "scope": "external",
+      "type": "host",
+      "protocol": "icmp",
+      "group": "Protocol examples",
+      "environment": "local",
+      "enabled": true,
+      "intervalMs": 1000,
+      "timeoutMs": 900,
+      "config": {
+        "host": "1.1.1.1"
+      }
+    },
+    {
+      "id": "example-http",
+      "host": "example.com",
+      "label": "HTTP example",
+      "scope": "external",
+      "type": "website",
+      "protocol": "http",
+      "group": "Protocol examples",
+      "environment": "local",
+      "enabled": true,
+      "intervalMs": 5000,
+      "timeoutMs": 10000,
+      "config": {
+        "url": "http://example.com",
+        "method": "GET",
+        "expectedStatus": 200
+      }
+    },
+    {
+      "id": "example-https",
+      "host": "example.com",
+      "label": "HTTPS example",
+      "scope": "external",
+      "type": "website",
+      "protocol": "https",
+      "group": "Protocol examples",
+      "environment": "local",
+      "enabled": true,
+      "intervalMs": 5000,
+      "timeoutMs": 10000,
+      "config": {
+        "url": "https://example.com",
+        "method": "GET",
+        "expectedStatus": 200
+      }
+    },
+    {
+      "id": "example-tcp",
+      "host": "1.1.1.1",
+      "label": "TCP example",
+      "scope": "external",
+      "type": "port",
+      "protocol": "tcp",
+      "group": "Protocol examples",
+      "environment": "local",
+      "enabled": true,
+      "intervalMs": 5000,
+      "timeoutMs": 5000,
+      "config": {
+        "host": "1.1.1.1",
+        "port": 443
+      }
+    },
+    {
+      "id": "example-dns",
+      "host": "cloudflare.com",
+      "label": "DNS example",
+      "scope": "external",
+      "type": "dns",
+      "protocol": "dns",
+      "group": "Protocol examples",
+      "environment": "local",
+      "enabled": true,
+      "intervalMs": 5000,
+      "timeoutMs": 3000,
+      "config": {
+        "name": "cloudflare.com",
+        "recordType": "A"
+      }
+    }
+  ],
   "externalTargets": [
     {
       "host": "1.1.1.1",

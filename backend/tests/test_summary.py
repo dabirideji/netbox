@@ -58,6 +58,65 @@ def test_summarize_identifies_external_degradation() -> None:
     assert summary["targets"][1]["history"][-1]["status"] == "degraded"
 
 
+def test_summarize_keeps_https_website_operational_at_expected_latency() -> None:
+    website = Target(
+        "jobbox-website",
+        "getjobbox.com",
+        "Jobbox",
+        "external",
+        type="website",
+        protocol="https",
+        config={"url": "https://getjobbox.com", "expectedStatus": 200},
+    )
+    samples = [
+        {"checkedAt": 1_000, "results": [result(website, True, 850)]},
+        {"checkedAt": 2_000, "results": [result(website, True, 920, 2_000)]},
+        {"checkedAt": 3_000, "results": [result(website, True, 780, 3_000)]},
+    ]
+
+    summary = summarize(
+        samples,
+        [website],
+        config(),
+        [],
+        NetworkIdentity("Office WiFi", "Office WiFi", "en0", "Wi-Fi"),
+        0,
+    )
+
+    assert summary["targets"][0]["currentStatus"] == "operational"
+    assert summary["targets"][0]["history"][-1]["status"] == "operational"
+    assert summary["targets"][0]["reachabilityOnly"] is True
+    assert summary["targets"][0]["latencyWarnMs"] is None
+
+
+def test_reachability_target_is_down_on_failure_not_degraded() -> None:
+    website = Target(
+        "jobbox-website",
+        "getjobbox.com",
+        "Jobbox",
+        "external",
+        type="website",
+        protocol="https",
+        config={"url": "https://getjobbox.com", "expectedStatus": 200},
+    )
+    samples = [
+        {"checkedAt": 1_000, "results": [result(website, True, 850)]},
+        {"checkedAt": 2_000, "results": [result(website, False, None, 2_000)]},
+    ]
+
+    summary = summarize(
+        samples,
+        [website],
+        config(),
+        [],
+        NetworkIdentity("Office WiFi", "Office WiFi", "en0", "Wi-Fi"),
+        0,
+    )
+
+    assert summary["targets"][0]["currentStatus"] == "down"
+    assert summary["targets"][0]["history"][-1]["status"] == "down"
+
+
 def test_summarize_identifies_gateway_down() -> None:
     gateway = Target("gateway", "192.168.1.1", "Gateway", "gateway")
     samples = [

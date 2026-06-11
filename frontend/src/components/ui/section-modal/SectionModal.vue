@@ -1,6 +1,15 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, useId, watch } from 'vue';
 import { PhX } from '@phosphor-icons/vue';
+import { AnimatePresence, motion } from 'motion-v';
+import {
+  modalBackdropAnimate,
+  modalBackdropExit,
+  modalBackdropInitial,
+  modalDialogAnimate,
+  modalDialogExit,
+  modalDialogInitial,
+} from '../../../motion/sectionAnimations';
 
 const props = withDefaults(
   defineProps<{
@@ -42,35 +51,51 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="section-modal-shell" :class="{ 'section-modal': mode === 'modal' }">
-    <button
-      v-if="mode === 'modal'"
-      type="button"
-      class="section-modal__backdrop"
-      aria-label="Close dialog"
-      @click="emit('close')"
-    />
-    <div
-      class="section-modal__frame"
-      :class="mode === 'modal' ? 'section-modal__dialog' : 'dashboard-card__body'"
-      :role="mode === 'modal' ? 'dialog' : undefined"
-      :aria-modal="mode === 'modal' ? 'true' : undefined"
-      :aria-labelledby="mode === 'modal' ? titleId : undefined"
-      :aria-label="mode === 'modal' && !title ? 'Section details' : undefined"
-      @click.stop
-    >
-      <header v-if="mode === 'modal'" class="section-modal__header">
-        <div class="section-modal__titles">
-          <p v-if="eyebrow" class="eyebrow">{{ eyebrow }}</p>
-          <h2 :id="titleId">{{ title }}</h2>
-        </div>
-        <button type="button" class="section-modal__close" aria-label="Close" @click="emit('close')">
-          <PhX class="section-modal__close-icon" weight="bold" aria-hidden="true" />
-        </button>
-      </header>
-      <div :class="{ 'section-modal__body': mode === 'modal' }">
-        <slot />
-      </div>
+  <div v-if="mode === 'inline'" class="section-modal-shell">
+    <div class="section-modal__frame dashboard-card__body">
+      <slot />
     </div>
   </div>
+
+  <AnimatePresence mode="sync">
+    <motion.div
+      v-if="mode === 'modal'"
+      key="section-modal"
+      class="section-modal-shell section-modal"
+      :initial="modalBackdropInitial"
+      :animate="modalBackdropAnimate"
+      :exit="modalBackdropExit"
+    >
+      <button
+        type="button"
+        class="section-modal__backdrop"
+        aria-label="Close dialog"
+        @click="emit('close')"
+      />
+      <motion.div
+        class="section-modal__frame section-modal__dialog"
+        role="dialog"
+        aria-modal="true"
+        :aria-labelledby="titleId"
+        :aria-label="!title ? 'Section details' : undefined"
+        :initial="modalDialogInitial"
+        :animate="modalDialogAnimate"
+        :exit="modalDialogExit"
+        @click.stop
+      >
+        <header class="section-modal__header">
+          <div class="section-modal__titles">
+            <p v-if="eyebrow" class="eyebrow">{{ eyebrow }}</p>
+            <h2 :id="titleId">{{ title }}</h2>
+          </div>
+          <button type="button" class="section-modal__close" aria-label="Close" @click="emit('close')">
+            <PhX class="section-modal__close-icon" weight="bold" aria-hidden="true" />
+          </button>
+        </header>
+        <div class="section-modal__body">
+          <slot />
+        </div>
+      </motion.div>
+    </motion.div>
+  </AnimatePresence>
 </template>

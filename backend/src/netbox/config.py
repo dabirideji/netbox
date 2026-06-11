@@ -144,6 +144,18 @@ def load_default_target_args() -> list[str]:
     return [target_to_arg(target) for target in targets if isinstance(target, dict)]
 
 
+def load_default_target_seeds() -> list[dict[str, Any]]:
+    """Return structured target seeds from `config/targets.json` when available."""
+
+    payload = load_json_config("targets.json")
+    targets = payload.get("targets")
+    if targets is None:
+        targets = payload.get("externalTargets", [])
+    if not isinstance(targets, list):
+        raise ValueError("config/targets.json targets must be a list")
+    return [target for target in targets if isinstance(target, dict)]
+
+
 def load_security_config() -> dict[str, Any]:
     """Return security-related config with safe defaults."""
 

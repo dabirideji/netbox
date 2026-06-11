@@ -16,7 +16,7 @@ ifneq ($(wildcard $(CODEX_NODE_DIR)/node),)
 export PATH := $(CODEX_NODE_DIR):$(PATH)
 endif
 
-.PHONY: help setup setup-check setup-dirs setup-env check-run install install-backend install-frontend build frontend-build run run-prod run-backend dev frontend-dev backend-test frontend-test test coverage lint db-shell clean clean-data docker-build docker-run
+.PHONY: help setup setup-check setup-dirs setup-env seed-targets check-run install install-backend install-frontend build frontend-build run run-prod run-backend dev frontend-dev backend-test frontend-test test coverage lint db-shell clean clean-data docker-build docker-run
 
 .DEFAULT_GOAL := help
 
@@ -47,7 +47,7 @@ help:
 	@printf "    Dashboard  $(FRONTEND_URL)\n"
 	@printf "    API        $(BACKEND_URL)\n\n"
 
-setup: setup-check setup-dirs setup-env install
+setup: setup-check setup-dirs setup-env install seed-targets
 	@printf "\n"
 	@printf "  Setup complete.\n\n"
 	@printf "  Next steps:\n"
@@ -69,6 +69,9 @@ setup-env:
 		cp .env.example .env; \
 		printf "  Created .env from .env.example\n"; \
 	fi
+
+seed-targets:
+	@$(PYTHON) backend/monitor.py seed
 
 check-run:
 	@test -d frontend/node_modules || (printf "\n  Missing frontend dependencies. Run:\n    make setup\n\n" && exit 1)

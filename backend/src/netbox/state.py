@@ -8,10 +8,12 @@ import queue
 import threading
 from typing import Any
 
+from netbox.checks import run_check
 from netbox.models import MonitorConfig, NetworkIdentity, Target
 from netbox.speed import ONE_DAY_MS, normalize_speed_test, speed_policy
 from netbox.storage import DEFAULT_STORAGE_CONFIG, StatusStore
 from netbox.summary import capture_events, summarize
+from netbox.targets import target_to_api
 from netbox.timeutils import now_ms
 
 
@@ -82,7 +84,9 @@ class MonitorState:
             event_count = len(self.events)
             capture_events(self.last_summary, summary, sample, self.events, self.broadcast)
             if self.store:
-                self.store.record_events(self.events[event_count:])
+                new_events = self.events[event_count:]
+                self.store.record_events(new_events)
+                self.store.record_incident_events(new_events)
             summary = self._summarize()
             self.last_summary = summary
 
@@ -139,6 +143,102 @@ class MonitorState:
         if not self.store:
             return {"from": from_ms, "to": to_ms, "targets": []}
         return self.store.target_history(points, from_ms, to_ms)
+
+    def list_targets(self) -> dict[str, Any]:
+        """Return all configured monitoring targets."""
+
+        return {"targets": [target_to_api(target) for target in self.current_targets()]}
+
+    def get_target(self, target_id: str) -> dict[str, Any]:
+        """Return one configured monitoring target."""
+
+        target = self._require_store().get_target(target_id)
+        if not target:
+            raise ValueError("target was not found")
+        return {"target": target_to_api(target)}
+
+    def create_target(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Create one target and broadcast the updated target list."""
+
+        store = self._require_store()
+        target = store.create_target(payload)
+        self.reload_targets()
+        self.broadcast({"type": "targets", **self.list_targets()})
+        return {"target": target_to_api(target)}
+
+    def update_target(self, target_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        """Update one target and broadcast the updated target list."""
+
+        store = self._require_store()
+        target = store.update_target(target_id, payload)
+        self.reload_targets()
+        self.broadcast({"type": "targets", **self.list_targets()})
+        return {"target": target_to_api(target)}
+
+    def delete_target(self, target_id: str) -> dict[str, Any]:
+        """Delete one target and broadcast the updated target list."""
+
+        deleted = self._require_store().delete_target(target_id)
+        if not deleted:
+            raise ValueError("target was not found")
+        self.reload_targets()
+        self.broadcast({"type": "targets", **self.list_targets()})
+        return {"deleted": True}
+
+    def check_now(self, target_id: str) -> dict[str, Any]:
+        """Run one immediate check and append it to persisted history."""
+
+        target = self._require_store().get_target(target_id)
+        if not target:
+            raise ValueError("target was not found")
+        result = run_check(target).to_dict()
+        summary = self.append_sample({"checkedAt": result["checkedAt"], "results": [result]})
+        return {"result": result, "summary": summary}
+
+    def target_results(
+        self,
+        target_id: str,
+        limit: int,
+        from_ms: int | None = None,
+        to_ms: int | None = None,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        """Return persisted check results for one target."""
+
+        if not self._require_store().get_target(target_id):
+            raise ValueError("target was not found")
+        return self._require_store().target_results(target_id, limit, from_ms, to_ms, offset)
+
+    def incidents(
+        self,
+        limit: int,
+        from_ms: int | None = None,
+        to_ms: int | None = None,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        """Return durable incident windows."""
+
+        return self._require_store().recent_incidents(limit, from_ms, to_ms, offset)
+
+    def active_targets(self) -> list[Target]:
+        """Return enabled targets for scheduler execution."""
+
+        return [target for target in self.current_targets() if target.enabled]
+
+    def current_targets(self) -> list[Target]:
+        """Return the current target list, preferring SQLite when available."""
+
+        if self.store:
+            with self.lock:
+                self.targets = self.store.list_targets()
+        return list(self.targets)
+
+    def reload_targets(self) -> None:
+        """Refresh in-memory targets from storage."""
+
+        if self.store:
+            with self.lock:
+                self.targets = self.store.list_targets()
 
     def speed_tests(
         self,
@@ -238,6 +338,13 @@ class MonitorState:
         """Build a summary from the currently retained in-memory samples."""
 
         return summarize(self.samples, self.targets, self.config, self.events, self.network, self.started_at)
+
+    def _require_store(self) -> StatusStore:
+        """Return the persistence gateway or fail for storage-backed APIs."""
+
+        if not self.store:
+            raise ValueError("target storage is unavailable")
+        return self.store
 
 
 def sse_payload(payload: dict[str, Any]) -> str:

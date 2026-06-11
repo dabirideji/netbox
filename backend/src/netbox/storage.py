@@ -1,4 +1,4 @@
-"""SQLite persistence for raw ping signals and incident events."""
+"""SQLite persistence for monitor targets, check results, and incidents."""
 
 from __future__ import annotations
 
@@ -8,8 +8,9 @@ import threading
 from pathlib import Path
 from typing import Any
 
-from netbox.models import MonitorConfig
-from netbox.summary import status_for_result
+from netbox.models import MonitorConfig, Target
+from netbox.summary import latency_warn_ms_for, status_for_result
+from netbox.targets import normalize_target_payload, target_to_api
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS ping_results (
@@ -30,6 +31,46 @@ CREATE TABLE IF NOT EXISTS ping_results (
 CREATE INDEX IF NOT EXISTS idx_ping_results_checked_at ON ping_results (checked_at);
 CREATE INDEX IF NOT EXISTS idx_ping_results_target_checked ON ping_results (target_id, checked_at);
 
+CREATE TABLE IF NOT EXISTS monitor_targets (
+  id TEXT PRIMARY KEY,
+  label TEXT NOT NULL,
+  host TEXT NOT NULL,
+  scope TEXT NOT NULL,
+  target_type TEXT NOT NULL,
+  protocol TEXT NOT NULL,
+  group_name TEXT NOT NULL,
+  environment TEXT NOT NULL,
+  enabled INTEGER NOT NULL,
+  interval_ms INTEGER NOT NULL,
+  timeout_ms INTEGER NOT NULL,
+  config_json TEXT NOT NULL,
+  created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
+  updated_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
+);
+
+CREATE INDEX IF NOT EXISTS idx_monitor_targets_enabled ON monitor_targets (enabled);
+
+CREATE TABLE IF NOT EXISTS check_results (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  checked_at INTEGER NOT NULL,
+  target_id TEXT NOT NULL,
+  host TEXT NOT NULL,
+  label TEXT NOT NULL,
+  scope TEXT NOT NULL,
+  target_type TEXT NOT NULL,
+  protocol TEXT NOT NULL,
+  ok INTEGER NOT NULL,
+  latency_ms REAL,
+  error TEXT,
+  status TEXT NOT NULL,
+  severity INTEGER NOT NULL,
+  duration_ms INTEGER,
+  created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
+);
+
+CREATE INDEX IF NOT EXISTS idx_check_results_checked_at ON check_results (checked_at);
+CREATE INDEX IF NOT EXISTS idx_check_results_target_checked ON check_results (target_id, checked_at);
+
 CREATE TABLE IF NOT EXISTS status_events (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   event_at INTEGER NOT NULL,
@@ -43,6 +84,20 @@ CREATE TABLE IF NOT EXISTS status_events (
 );
 
 CREATE INDEX IF NOT EXISTS idx_status_events_event_at ON status_events (event_at);
+
+CREATE TABLE IF NOT EXISTS incidents (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  target_id TEXT NOT NULL,
+  target_label TEXT NOT NULL,
+  opened_at INTEGER NOT NULL,
+  resolved_at INTEGER,
+  status TEXT NOT NULL,
+  message TEXT NOT NULL,
+  created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
+);
+
+CREATE INDEX IF NOT EXISTS idx_incidents_target_status ON incidents (target_id, status);
+CREATE INDEX IF NOT EXISTS idx_incidents_opened_at ON incidents (opened_at);
 
 CREATE TABLE IF NOT EXISTS speed_tests (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -132,8 +187,10 @@ class StatusStore:
         """Store all target results for one sampling tick."""
 
         rows = []
+        check_rows = []
         for result in sample["results"]:
-            status = status_for_result(result, config)
+            target = self._target_for_result(result)
+            status = status_for_result(result, latency_warn_ms_for(target, config), target)
             rows.append(
                 (
                     sample["checkedAt"],
@@ -148,6 +205,23 @@ class StatusStore:
                     STATUS_SEVERITY[status],
                 )
             )
+            check_rows.append(
+                (
+                    result.get("checkedAt", sample["checkedAt"]),
+                    result["id"],
+                    result["host"],
+                    result["label"],
+                    result["scope"],
+                    result.get("type", "host"),
+                    result.get("protocol", "icmp"),
+                    1 if result["ok"] else 0,
+                    result["latencyMs"],
+                    result["error"],
+                    status,
+                    STATUS_SEVERITY[status],
+                    result.get("durationMs"),
+                )
+            )
 
         with self.lock:
             self.connection.executemany(
@@ -158,9 +232,324 @@ class StatusStore:
                 """,
                 rows,
             )
+            self.connection.executemany(
+                """
+                INSERT INTO check_results (
+                  checked_at, target_id, host, label, scope, target_type, protocol,
+                  ok, latency_ms, error, status, severity, duration_ms
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                check_rows,
+            )
             self.connection.commit()
             if self.storage_config["autoPrune"]:
                 self.enforce_limits()
+
+    def _target_for_result(self, result: dict[str, Any]) -> Target:
+        """Resolve the configured target for a check result, with a safe ICMP fallback."""
+
+        stored = self.get_target(result["id"])
+        if stored is not None:
+            return stored
+        return Target(
+            id=result["id"],
+            host=result["host"],
+            label=result["label"],
+            scope=result["scope"],
+            type=result.get("type", "host"),
+            protocol=result.get("protocol", "icmp"),
+        )
+
+    def seed_targets(self, targets: list[Target]) -> None:
+        """Insert configured defaults only when a target id is not already stored."""
+
+        with self.lock:
+            for target in targets:
+                self._upsert_target(target, insert_only=True)
+            self.connection.commit()
+
+    def refresh_configured_seeds(self, targets: list[Target]) -> None:
+        """Apply updated bundled seed settings to targets that already exist."""
+
+        with self.lock:
+            for target in targets:
+                if self.get_target(target.id) is None:
+                    continue
+                self._upsert_target(target)
+            self.connection.commit()
+
+    def list_targets(self, enabled_only: bool = False) -> list[Target]:
+        """Return all database-managed targets in stable display order."""
+
+        where_sql = "WHERE enabled = 1" if enabled_only else ""
+        with self.lock:
+            rows = self.connection.execute(
+                f"""
+                SELECT *
+                FROM monitor_targets
+                {where_sql}
+                ORDER BY group_name COLLATE NOCASE, label COLLATE NOCASE, id COLLATE NOCASE
+                """
+            ).fetchall()
+        return [target_from_row(row) for row in rows]
+
+    def get_target(self, target_id: str) -> Target | None:
+        """Return one target by id."""
+
+        with self.lock:
+            row = self.connection.execute(
+                "SELECT * FROM monitor_targets WHERE id = ?",
+                (target_id,),
+            ).fetchone()
+        return target_from_row(row) if row else None
+
+    def create_target(self, payload: dict[str, Any]) -> Target:
+        """Validate and persist a new target."""
+
+        target = normalize_target_payload(payload, index=self._target_count())
+        with self.lock:
+            target = self._with_unique_target_id(target)
+            self._upsert_target(target)
+            self.connection.commit()
+        return target
+
+    def update_target(self, target_id: str, payload: dict[str, Any]) -> Target:
+        """Validate and persist partial target updates."""
+
+        with self.lock:
+            existing = self.get_target(target_id)
+            if not existing:
+                raise ValueError("target was not found")
+            target = normalize_target_payload({**payload, "id": target_id}, existing=existing)
+            self._upsert_target(target)
+            self.connection.commit()
+        return target
+
+    def delete_target(self, target_id: str) -> bool:
+        """Delete a target configuration while keeping historical results."""
+
+        with self.lock:
+            cursor = self.connection.execute("DELETE FROM monitor_targets WHERE id = ?", (target_id,))
+            self.connection.commit()
+        return cursor.rowcount > 0
+
+    def target_results(
+        self,
+        target_id: str,
+        limit: int,
+        from_ms: int | None = None,
+        to_ms: int | None = None,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        """Return newest-first check result history for one target."""
+
+        safe_limit = max(1, min(limit, 1_000))
+        safe_offset = max(0, offset)
+        time_sql, time_params = build_time_filter("checked_at", from_ms, to_ms, prefix="AND")
+        params = (target_id, *time_params)
+        with self.lock:
+            total = self.connection.execute(
+                f"SELECT COUNT(*) AS total FROM check_results WHERE target_id = ? {time_sql}",
+                params,
+            ).fetchone()["total"]
+            rows = self.connection.execute(
+                f"""
+                SELECT *
+                FROM check_results
+                WHERE target_id = ?
+                {time_sql}
+                ORDER BY checked_at DESC
+                LIMIT ? OFFSET ?
+                """,
+                (*params, safe_limit, safe_offset),
+            ).fetchall()
+        return {
+            "targetId": target_id,
+            "from": from_ms,
+            "to": to_ms,
+            "limit": safe_limit,
+            "offset": safe_offset,
+            "total": total,
+            "results": [check_result_from_row(row) for row in rows],
+        }
+
+    def record_incident_events(self, events: list[dict[str, Any]]) -> None:
+        """Open or resolve durable incident windows from status transition events."""
+
+        if not events:
+            return
+
+        with self.lock:
+            for event in events:
+                target_id = event["targetId"]
+                target_label = event["targetLabel"]
+                to_status = event["to"]
+                if to_status == "operational":
+                    self.connection.execute(
+                        """
+                        UPDATE incidents
+                        SET resolved_at = ?, status = 'resolved', message = ?
+                        WHERE id = (
+                          SELECT id
+                          FROM incidents
+                          WHERE target_id = ? AND status = 'open'
+                          ORDER BY opened_at DESC
+                          LIMIT 1
+                        )
+                        """,
+                        (event["at"], event["message"], target_id),
+                    )
+                    continue
+
+                open_row = self.connection.execute(
+                    """
+                    SELECT id
+                    FROM incidents
+                    WHERE target_id = ? AND status = 'open'
+                    ORDER BY opened_at DESC
+                    LIMIT 1
+                    """,
+                    (target_id,),
+                ).fetchone()
+                if open_row:
+                    self.connection.execute(
+                        """
+                        UPDATE incidents
+                        SET target_label = ?, message = ?
+                        WHERE id = ?
+                        """,
+                        (target_label, event["message"], open_row["id"]),
+                    )
+                else:
+                    self.connection.execute(
+                        """
+                        INSERT INTO incidents (
+                          target_id, target_label, opened_at, status, message
+                        ) VALUES (?, ?, ?, 'open', ?)
+                        """,
+                        (target_id, target_label, event["at"], event["message"]),
+                    )
+            self.connection.commit()
+
+    def recent_incidents(
+        self,
+        limit: int = 50,
+        from_ms: int | None = None,
+        to_ms: int | None = None,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        """Return durable incident windows with pagination metadata."""
+
+        safe_limit = max(1, min(limit, 500))
+        safe_offset = max(0, offset)
+        where_sql, where_params = build_time_filter("opened_at", from_ms, to_ms)
+        with self.lock:
+            total = self.connection.execute(
+                f"SELECT COUNT(*) AS total FROM incidents {where_sql}",
+                where_params,
+            ).fetchone()["total"]
+            rows = self.connection.execute(
+                f"""
+                SELECT *
+                FROM incidents
+                {where_sql}
+                ORDER BY opened_at DESC
+                LIMIT ? OFFSET ?
+                """,
+                (*where_params, safe_limit, safe_offset),
+            ).fetchall()
+        return {
+            "from": from_ms,
+            "to": to_ms,
+            "limit": safe_limit,
+            "offset": safe_offset,
+            "total": total,
+            "incidents": [incident_from_row(row) for row in rows],
+        }
+
+    def _target_count(self) -> int:
+        """Return the number of configured targets."""
+
+        with self.lock:
+            return int(self.connection.execute("SELECT COUNT(*) AS total FROM monitor_targets").fetchone()["total"])
+
+    def _with_unique_target_id(self, target: Target) -> Target:
+        """Append a numeric suffix when a generated target id already exists."""
+
+        if not self.get_target(target.id):
+            return target
+
+        base_id = target.id[:72].rstrip("-") or "target"
+        suffix = 2
+        while self.get_target(f"{base_id}-{suffix}"):
+            suffix += 1
+        return Target(
+            id=f"{base_id}-{suffix}",
+            host=target.host,
+            label=target.label,
+            scope=target.scope,
+            type=target.type,
+            protocol=target.protocol,
+            group=target.group,
+            environment=target.environment,
+            enabled=target.enabled,
+            interval_ms=target.interval_ms,
+            timeout_ms=target.timeout_ms,
+            config=target.config,
+        )
+
+    def _upsert_target(self, target: Target, insert_only: bool = False) -> None:
+        """Insert or replace a target row."""
+
+        payload = target_to_api(target)
+        params = (
+            payload["id"],
+            payload["label"],
+            payload["host"],
+            payload["scope"],
+            payload["type"],
+            payload["protocol"],
+            payload["group"],
+            payload["environment"],
+            1 if payload["enabled"] else 0,
+            payload["intervalMs"],
+            payload["timeoutMs"],
+            json.dumps(payload["config"], sort_keys=True),
+        )
+        if insert_only:
+            self.connection.execute(
+                """
+                INSERT OR IGNORE INTO monitor_targets (
+                  id, label, host, scope, target_type, protocol, group_name, environment,
+                  enabled, interval_ms, timeout_ms, config_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                params,
+            )
+            return
+
+        self.connection.execute(
+            """
+            INSERT INTO monitor_targets (
+              id, label, host, scope, target_type, protocol, group_name, environment,
+              enabled, interval_ms, timeout_ms, config_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+              label = excluded.label,
+              host = excluded.host,
+              scope = excluded.scope,
+              target_type = excluded.target_type,
+              protocol = excluded.protocol,
+              group_name = excluded.group_name,
+              environment = excluded.environment,
+              enabled = excluded.enabled,
+              interval_ms = excluded.interval_ms,
+              timeout_ms = excluded.timeout_ms,
+              config_json = excluded.config_json,
+              updated_at = unixepoch() * 1000
+            """,
+            params,
+        )
 
     def history_overview(
         self,
@@ -183,10 +572,10 @@ class StatusStore:
                   COUNT(*) AS total
                 FROM (
                   SELECT *
-                  FROM ping_results
+                  FROM check_results
                   WHERE checked_at IN (
                     SELECT DISTINCT checked_at
-                    FROM ping_results
+                    FROM check_results
                     {where_sql}
                     ORDER BY checked_at DESC
                     LIMIT ?
@@ -231,15 +620,17 @@ class StatusStore:
                   host,
                   label,
                   scope,
+                  target_type,
+                  protocol,
                   ok,
                   latency_ms,
                   error,
                   status,
                   severity
-                FROM ping_results
+                FROM check_results
                 WHERE checked_at IN (
                   SELECT DISTINCT checked_at
-                  FROM ping_results
+                  FROM check_results
                   {where_sql}
                   ORDER BY checked_at DESC
                   LIMIT ?
@@ -258,6 +649,8 @@ class StatusStore:
                     "host": row["host"],
                     "label": row["label"],
                     "scope": row["scope"],
+                    "type": row["target_type"],
+                    "protocol": row["protocol"],
                     "points": [],
                 },
             )
@@ -649,11 +1042,27 @@ class StatusStore:
                     limits["maxSpeedTests"],
                 ),
             }
+            deleted["incidents"] += self._prune_table_to_limit(
+                "incidents",
+                "opened_at ASC, id ASC",
+                limits["maxIncidents"],
+            )
+            deleted["pingSamples"] += self._prune_table_to_limit(
+                "check_results",
+                "checked_at ASC, id ASC",
+                limits["maxPingSamples"],
+            )
 
             max_bytes = limits["maxDatabaseBytes"]
             iterations = 0
             while self.database_bytes() > max_bytes and iterations < 20:
                 iterations += 1
+                batch_deleted = self._delete_oldest_rows("check_results", "checked_at ASC, id ASC", 5_000)
+                if batch_deleted:
+                    deleted["pingSamples"] += batch_deleted
+                    self.connection.commit()
+                    continue
+
                 batch_deleted = self._delete_oldest_rows("ping_results", "checked_at ASC, id ASC", 5_000)
                 if batch_deleted:
                     deleted["pingSamples"] += batch_deleted
@@ -671,6 +1080,12 @@ class StatusStore:
                     deleted["incidents"] += batch_deleted
                     self.connection.commit()
                     continue
+
+                batch_deleted = self._delete_oldest_rows("incidents", "opened_at ASC, id ASC", 100)
+                if batch_deleted:
+                    deleted["incidents"] += batch_deleted
+                    self.connection.commit()
+                    continue
                 break
 
             self.connection.commit()
@@ -684,7 +1099,7 @@ class StatusStore:
             usage = {
                 "databaseBytes": self.database_bytes(),
                 "incidents": self._table_count("status_events"),
-                "pingSamples": self._table_count("ping_results"),
+                "pingSamples": self._table_count("check_results"),
                 "speedTests": self._table_count("speed_tests"),
             }
 
@@ -709,11 +1124,13 @@ class StatusStore:
         deleted = {"incidents": 0, "pingSamples": 0, "speedTests": 0}
         with self.lock:
             if scope in {"incidents", "all"}:
-                deleted["incidents"] = self._table_count("status_events")
+                deleted["incidents"] = self._table_count("status_events") + self._table_count("incidents")
                 self.connection.execute("DELETE FROM status_events")
+                self.connection.execute("DELETE FROM incidents")
             if scope in {"ping", "all"}:
-                deleted["pingSamples"] = self._table_count("ping_results")
+                deleted["pingSamples"] = self._table_count("ping_results") + self._table_count("check_results")
                 self.connection.execute("DELETE FROM ping_results")
+                self.connection.execute("DELETE FROM check_results")
             if scope in {"speedTests", "all"}:
                 deleted["speedTests"] = self._table_count("speed_tests")
                 self.connection.execute("DELETE FROM speed_tests")
@@ -730,7 +1147,12 @@ class StatusStore:
             self.connection.close()
 
 
-def build_time_filter(column: str, from_ms: int | None, to_ms: int | None) -> tuple[str, list[int]]:
+def build_time_filter(
+    column: str,
+    from_ms: int | None,
+    to_ms: int | None,
+    prefix: str = "WHERE",
+) -> tuple[str, list[int]]:
     """Build a parameterized SQL time filter for an epoch-ms column."""
 
     clauses = []
@@ -741,7 +1163,7 @@ def build_time_filter(column: str, from_ms: int | None, to_ms: int | None) -> tu
     if to_ms is not None:
         clauses.append(f"{column} <= ?")
         params.append(to_ms)
-    return (f"WHERE {' AND '.join(clauses)}", params) if clauses else ("", params)
+    return (f"{prefix} {' AND '.join(clauses)}", params) if clauses else ("", params)
 
 
 def normalize_storage_config(storage_config: dict[str, Any] | None) -> dict[str, Any]:
@@ -767,6 +1189,67 @@ def percent_used(used: int, limit: int) -> float:
     if limit <= 0:
         return 0.0
     return round(min(100.0, (used / limit) * 100), 1)
+
+
+def target_from_row(row: sqlite3.Row) -> Target:
+    """Convert one SQLite target row into the domain model."""
+
+    try:
+        config = json.loads(row["config_json"])
+    except json.JSONDecodeError:
+        config = {}
+    if not isinstance(config, dict):
+        config = {}
+
+    return Target(
+        id=row["id"],
+        host=row["host"],
+        label=row["label"],
+        scope=row["scope"],
+        type=row["target_type"],
+        protocol=row["protocol"],
+        group=row["group_name"],
+        environment=row["environment"],
+        enabled=bool(row["enabled"]),
+        interval_ms=int(row["interval_ms"]),
+        timeout_ms=int(row["timeout_ms"]),
+        config=config,
+    )
+
+
+def check_result_from_row(row: sqlite3.Row) -> dict[str, Any]:
+    """Convert one generalized check-result row to the public API shape."""
+
+    return {
+        "id": row["id"],
+        "checkedAt": row["checked_at"],
+        "targetId": row["target_id"],
+        "host": row["host"],
+        "label": row["label"],
+        "scope": row["scope"],
+        "type": row["target_type"],
+        "protocol": row["protocol"],
+        "ok": bool(row["ok"]),
+        "latencyMs": row["latency_ms"],
+        "error": row["error"],
+        "status": row["status"],
+        "severity": row["severity"],
+        "durationMs": row["duration_ms"],
+    }
+
+
+def incident_from_row(row: sqlite3.Row) -> dict[str, Any]:
+    """Convert one incident row to the public API shape."""
+
+    return {
+        "id": row["id"],
+        "targetId": row["target_id"],
+        "targetLabel": row["target_label"],
+        "openedAt": row["opened_at"],
+        "resolvedAt": row["resolved_at"],
+        "status": row["status"],
+        "message": row["message"],
+    }
 
 
 def speed_test_from_row(row: sqlite3.Row) -> dict[str, Any]:

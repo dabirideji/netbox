@@ -72,7 +72,10 @@ onUnmounted(() => {
   >
     <div class="speed-arc-gauge__header">
       <span class="speed-arc-gauge__label">{{ label }}</span>
-      <span v-if="running" class="speed-arc-gauge__meta speed-arc-gauge__live">Live</span>
+      <span v-if="running" class="speed-arc-gauge__meta speed-arc-gauge__live speed-running-label">
+        <PhSpinner class="speed-running-label__icon" weight="bold" aria-hidden="true" />
+        Running
+      </span>
       <time
         v-else-if="testedAt"
         class="speed-arc-gauge__meta speed-arc-gauge__time"

@@ -8,6 +8,7 @@ import json
 import os
 import shlex
 import signal
+import socket
 import subprocess
 import sys
 import time
@@ -71,12 +72,14 @@ def main() -> int:
             signature = backend_signature()
             if signature != last_signature and time.monotonic() - backend_started_at >= RESTART_GRACE_SECONDS:
                 print("Backend change detected; restarting monitor...", flush=True)
-                stop_process(backend)
-                backend = start_backend(args.host, args.backend_port, backend_args)
+                backend = restart_backend(args.host, args.backend_port, backend_args, backend)
                 last_signature = signature
                 backend_started_at = time.monotonic()
             elif backend.poll() is not None:
-                print("Backend monitor exited; waiting for file change to restart.", file=sys.stderr)
+                print("Backend monitor exited; restarting...", file=sys.stderr, flush=True)
+                backend = restart_backend(args.host, args.backend_port, backend_args, backend)
+                last_signature = backend_signature()
+                backend_started_at = time.monotonic()
     finally:
         stop_process(backend)
         stop_process(frontend)
@@ -91,6 +94,19 @@ def ensure_runtime_dirs() -> None:
     (ROOT / ".dev" / "static").mkdir(parents=True, exist_ok=True)
 
 
+def restart_backend(
+    host: str,
+    port: int,
+    extra_args: list[str],
+    process: subprocess.Popen[bytes],
+) -> subprocess.Popen[bytes]:
+    """Stop the current monitor and start a fresh process once the port is free."""
+
+    stop_process(process)
+    wait_for_port_free(host, port)
+    return start_backend(host, port, extra_args)
+
+
 def start_backend(host: str, port: int, extra_args: list[str]) -> subprocess.Popen[bytes]:
     """Start the monitor backend with repository-local Python imports."""
 
@@ -100,6 +116,7 @@ def start_backend(host: str, port: int, extra_args: list[str]) -> subprocess.Pop
     env["NETBOX_DEV_MODE"] = "1"
     command = [
         sys.executable,
+        "-B",
         str(ROOT / "backend" / "monitor.py"),
         "--host",
         host,
@@ -200,6 +217,22 @@ def stop_process(process: subprocess.Popen[bytes]) -> None:
     except subprocess.TimeoutExpired:
         process.kill()
         process.wait(timeout=5)
+
+
+def port_is_open(host: str, port: int) -> bool:
+    """Return True when something is accepting TCP connections on host:port."""
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.settimeout(0.2)
+        return sock.connect_ex((host, port)) == 0
+
+
+def wait_for_port_free(host: str, port: int, timeout: float = 5.0) -> None:
+    """Wait until the backend port is available for a replacement process."""
+
+    deadline = time.monotonic() + timeout
+    while port_is_open(host, port) and time.monotonic() < deadline:
+        time.sleep(0.1)
 
 
 if __name__ == "__main__":

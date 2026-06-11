@@ -1,19 +1,39 @@
 <script setup lang="ts">
 import { PhCube } from '@phosphor-icons/vue';
-import { networkLabel } from '../../format';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { formatDuration, networkLabel } from '../../format';
 import type { NetworkIdentity, Status } from '../../types';
 import DashboardSectionCard from './DashboardSectionCard.vue';
 
-defineProps<{
+const props = defineProps<{
   appName: string;
   overallStatus: Status | 'unknown';
   headline: string;
   diagnosis: string;
   network?: NetworkIdentity;
   isIndefinite: boolean;
-  elapsed: string;
-  remaining: string;
+  startedAt?: number;
+  endsAt?: number | null;
 }>();
+
+const now = ref(Date.now());
+let timer: number | undefined;
+
+const elapsed = computed(() => formatDuration(Math.max(0, now.value - (props.startedAt ?? now.value))));
+const remaining = computed(() => {
+  if (!props.endsAt) return 'Live';
+  return formatDuration(Math.max(0, props.endsAt - now.value));
+});
+
+onMounted(() => {
+  timer = window.setInterval(() => {
+    now.value = Date.now();
+  }, 1000);
+});
+
+onUnmounted(() => {
+  if (timer) window.clearInterval(timer);
+});
 </script>
 
 <template>

@@ -4,6 +4,7 @@ import { fetchSpeedTests, recordSpeedTest } from '../api';
 import { formatClock } from '../format';
 import { parseDateRange } from '../range';
 import { runSpeedTest, type SpeedTestProgress } from '../speed-test';
+import { throttle } from '../utils/schedule';
 import type { SpeedTestPolicy, SpeedTestResult, SpeedTestStats } from '../types';
 import { usePersonalisationStore } from './personalisation';
 
@@ -40,6 +41,18 @@ export const useSpeedTestStore = defineStore(
       latencyMs: null,
       message: 'Ready when you are.',
     });
+
+    const updateProgress = throttle((nextProgress: SpeedTestProgress) => {
+      progress.value = nextProgress;
+    }, 120);
+
+    function reportProgress(nextProgress: SpeedTestProgress): void {
+      if (nextProgress.phase === 'saving' || nextProgress.phase === 'complete' || nextProgress.phase === 'failed') {
+        progress.value = nextProgress;
+        return;
+      }
+      updateProgress(nextProgress);
+    }
 
     const testOffset = computed(() => usePersonalisationStore().speedTestPage * SPEED_TEST_PAGE_SIZE);
 
@@ -117,9 +130,13 @@ export const useSpeedTestStore = defineStore(
       }
     }
 
+    const scheduleRefreshTests = throttle(() => {
+      void refreshTests();
+    }, 500);
+
     function handleStreamSpeedTest(test: SpeedTestResult): void {
       latestTest.value = test;
-      void refreshTests();
+      scheduleRefreshTests();
     }
 
     function resetPagination(): void {
@@ -135,9 +152,7 @@ export const useSpeedTestStore = defineStore(
       try {
         const result = await runSpeedTest({
           policy: policy.value,
-          onProgress: (nextProgress) => {
-            progress.value = nextProgress;
-          },
+          onProgress: reportProgress,
         });
 
         progress.value = {

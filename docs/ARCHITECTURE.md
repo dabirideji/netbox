@@ -11,7 +11,10 @@ backend/src/netbox/
   cli.py                    Argument parsing, validation, process lifecycle
   server.py                 HTTP, static files, SSE, security headers
   state.py                  Thread-safe monitor state and SSE fanout
+  scheduler.py              In-process per-target scheduler with jitter
   storage.py                SQLite persistence and history aggregation
+  targets.py                Target validation and seed normalization
+  checks.py                 HTTP/S, TCP, ICMP, and DNS executors
   ping.py                   Platform-specific ping execution and parsing
   summary.py                Status aggregation, diagnosis, events, history
   network.py                Gateway, interface, and Wi-Fi identity detection
@@ -35,7 +38,7 @@ config/
   backend.json              Backend, monitor, storage, network defaults
   frontend.json             Vite app/proxy defaults
   security.json             Bind allow-list and security headers
-  targets.json              Default external targets
+  targets.json              Default target seeds for first startup
   speed.json                Active speed-test provider policy
 ```
 
@@ -43,7 +46,7 @@ config/
 
 ### 1. System overview
 
-Netbox is a local network monitor: the backend pings your gateway and external targets every second, persists results in SQLite, and serves a Vue dashboard over REST and SSE.
+Netbox is a local-first monitor: the backend runs configurable HTTP/S, TCP, ICMP, and DNS checks from your machine, persists every result in SQLite, and serves a Vue dashboard over REST and SSE.
 
 ```mermaid
 flowchart TB
@@ -60,8 +63,10 @@ flowchart TB
 
   subgraph Backend["Backend - Python"]
     HTTPServer["HTTP server<br/>REST · SSE · static files"]
-    Monitor["Monitor loop<br/>ping · summarize · persist"]
+    Monitor["Scheduler<br/>check · summarize · persist"]
+    Executors["Protocol executors<br/>HTTP · TCP · ICMP · DNS"]
     HTTPServer --> Monitor
+    Monitor --> Executors
   end
 
   subgraph Config["Configuration"]
@@ -75,10 +80,10 @@ flowchart TB
 
   subgraph Network["Network targets"]
     Gateway["Local gateway"]
-    External["External DNS targets"]
+    External["External targets"]
   end
 
-  subgraph External["Optional external services"]
+  subgraph ExternalServices["Optional external services"]
     MLab["M-Lab NDT7<br/>speed tests"]
     Pexels["Pexels API<br/>wallpaper"]
   end
@@ -91,8 +96,8 @@ flowchart TB
   Env --> Backend
   JSON --> Backend
   JSON --> Frontend
-  Monitor --> Gateway
-  Monitor --> External
+  Executors --> Gateway
+  Executors --> External
   Monitor --> SQLite
   HTTPServer --> SQLite
   HTTPServer --> Pexels
@@ -100,13 +105,13 @@ flowchart TB
 
 ### 2. Runtime flow
 
-On startup the dashboard hydrates from the API, then stays live via SSE while the backend runs a continuous ping loop.
+On startup the dashboard hydrates from the API, then stays live via SSE while the backend scheduler runs enabled targets on their own intervals.
 
 ```mermaid
 sequenceDiagram
   participant UI as Vue Dashboard
   participant API as HTTP Server
-  participant Monitor as Monitor Loop
+  participant Monitor as Target Scheduler
   participant DB as SQLite
   participant Net as Gateway / External
 
@@ -119,10 +124,10 @@ sequenceDiagram
   UI->>API: GET /events (SSE)
   API-->>UI: live stream
 
-  Note over UI,Net: Monitor loop (~1s interval)
-  loop Each interval
-    Monitor->>Net: ping all targets
-    Net-->>Monitor: latency / loss
+  Note over UI,Net: Per-target schedule
+  loop Each target interval
+    Monitor->>Net: run protocol check
+    Net-->>Monitor: status / latency / error
     Monitor->>DB: persist results
     Monitor->>API: update state + fanout SSE
     API-->>UI: status + incidents
@@ -164,12 +169,17 @@ flowchart LR
 ## Runtime Flow
 
 1. CLI loads `.env`, optional `.env.<NETBOX_ENV>`, and `config/*.json`, then validates the merged runtime configuration.
-2. The monitor pings each target once per interval using argument-list subprocess calls.
-3. Results are persisted to SQLite and summarized into component status, packet loss, latency, jitter, history bars, and incident events.
+2. `config/targets.json` and CLI target args are normalized into target seeds, then inserted into SQLite only when the target id is missing.
+3. The scheduler runs enabled targets on their own intervals with a bounded worker pool and small jitter.
+4. Protocol executors return normalized results: HTTP/S status and optional keyword checks, TCP connect timing, ICMP via safe subprocess ping, and DNS resolution via `dnspython`.
+5. Results are persisted to SQLite and summarized into component status, uptime, latency, history bars, and incident events.
 4. The backend serves:
    - `GET /api/status` for the latest snapshot.
    - `GET /api/history?points=360` for persisted degradation trend points.
+   - `GET /api/targets`, `POST /api/targets`, `PATCH /api/targets/{id}`, and `DELETE /api/targets/{id}` for target CRUD.
+   - `POST /api/targets/{id}/check-now` and `GET /api/targets/{id}/results` for ad-hoc checks and raw result history.
    - `GET /api/targets/history` for per-target breakdowns.
+   - `GET /api/incidents` for durable incident windows.
    - `GET /api/events` for paginated incident logs.
    - `GET` and `POST /api/speed-tests` for speed-test policy, history, and recording.
    - `GET` and `PATCH /api/preferences` for UI preference sync.
@@ -196,7 +206,7 @@ Secrets such as `PEXELS_API_KEY` belong in `.env.local` only. `.env` and `.env.p
 
 ## Persistence
 
-SQLite stores one row per target check in `ping_results`, preserving the raw network signal for each gateway/external check. It also stores incident/status-change logs in `status_events`, which lets the dashboard hydrate recent incidents after backend restarts. UI preferences live in `ui_preferences` as a merged JSON document.
+SQLite stores target configuration in `monitor_targets`, one row per generalized check in `check_results`, legacy-compatible ping rows in `ping_results`, durable incident windows in `incidents`, and status transitions in `status_events`. UI preferences live in `ui_preferences` as a merged JSON document.
 
 The history endpoint groups recent check timestamps and returns:
 
@@ -204,7 +214,7 @@ The history endpoint groups recent check timestamps and returns:
 - `avgLatencyMs`: average successful latency for that timestamp.
 - `failurePct`: percentage of targets that failed at that timestamp.
 
-The target-history endpoint returns the same persisted signal split by target, which can be used for deeper gateway-vs-upstream analysis.
+The target-history endpoint returns the same persisted signal split by target, which can be used for deeper gateway-vs-upstream analysis. Target edits happen through SQLite-backed CRUD endpoints; JSON config is a seed/default source only.
 
 All persisted event and signal timestamps use Unix epoch milliseconds. Date-range filters are sent as bounded `from` and `to` epoch millisecond query parameters and are validated before database access. Incident logs are returned newest-first with bounded `limit` and `offset` pagination. The store uses WAL mode for file databases, a busy timeout for concurrent reads, uniqueness constraints for duplicate incident protection, and parameterized SQL statements.
 
@@ -233,11 +243,11 @@ The Vite server proxies `/api` and `/events` to the backend. Production-style se
 
 - Binds to `127.0.0.1` by default.
 - Only allows bind hosts: `127.0.0.1`, `localhost`, `0.0.0.0`.
-- Validates target hosts as IPs or DNS names.
+- Validates target labels, hosts, ports, URLs, intervals, timeouts, DNS record types, and protocol-specific config before persistence.
 - Executes `ping` via subprocess argument arrays, not shell strings.
 - Uses static-file path resolution with parent-directory escape checks.
 - Uses bounded query parameters for history requests.
-- Bounds JSON request bodies and speed-test metric values before persistence.
+- Bounds JSON request bodies, target config payloads, and speed-test metric values before persistence.
 - Allows NDT7 WebSocket and M-Lab locate connections in CSP only for the speed-test feature.
 - Allows `https://images.pexels.com` in CSP `img-src` only for the optional wallpaper feature.
 - Keeps `PEXELS_API_KEY` on the backend; the frontend never receives the key.
@@ -250,5 +260,5 @@ The Vite server proxies `/api` and `/events` to the backend. Production-style se
 - Backend: pytest with pytest-cov. `make test` enforces at least **70%** line coverage on `netbox` (`pyproject.toml` `fail_under = 70`).
 - Frontend: Vitest with jsdom and V8 coverage.
 - HTTP integration tests spin up a real local `StatusServer` and use real SQLite temp files.
-- External boundaries are mocked only where necessary: ping subprocess, Pexels HTTP, and NDT7 in the browser test suite.
+- External boundaries are mocked only where necessary: protocol executors, ping subprocess, Pexels HTTP, and NDT7 in the browser test suite.
 - Pure logic (chart geometry, formatting, validation, speed policy, gauge math) is covered with deterministic unit tests.

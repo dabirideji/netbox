@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { Pagination } from '../ui/pagination';
-import { formatClock, formatDate } from '../../format';
+import { formatDateTime } from '../../format';
 import type { StatusEvent } from '../../types';
 import DashboardSectionCard from './DashboardSectionCard.vue';
 
@@ -33,8 +33,7 @@ const incidentPill = computed(() => `${props.eventTotal} incident${props.eventTo
           <small>{{ event.from }} → {{ event.to }}</small>
         </div>
         <time class="event-time" :datetime="new Date(event.at).toISOString()">
-          <span>{{ formatClock(event.at) }}</span>
-          <small>{{ formatDate(event.at) }}</small>
+          {{ formatDateTime(event.at) }}
         </time>
       </article>
     </div>

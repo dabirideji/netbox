@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { PhGithubLogo } from '@phosphor-icons/vue';
+import { computed, onMounted, onUnmounted } from 'vue';
 import { storeToRefs } from 'pinia';
 import { subscribeStatus } from './api';
 import AppChrome from './components/AppChrome.vue';
+import DashboardNav from './components/dashboard/DashboardNav.vue';
 import {
   HeroSection,
   IncidentLogSection,
@@ -10,11 +12,13 @@ import {
   SpeedTestSection,
   SummaryMetricsSection,
   SystemRatiosSection,
+  TargetsConfigSection,
   TimelineSection,
 } from './components/dashboard';
-import { formatDuration, statusHeadline } from './format';
+import { statusHeadline } from './format';
 import {
   EVENT_PAGE_SIZE,
+  LIVE_CHECKS_PAGE_SIZE,
   SPEED_TEST_PAGE_SIZE,
   RECONNECTING_STATE,
   useHistoryStore,
@@ -22,6 +26,7 @@ import {
   usePersonalisationStore,
   useSpeedTestStore,
   useStorageStore,
+  useTargetsStore,
 } from './stores';
 
 const appName = __NETBOX_APP_NAME__;
@@ -31,6 +36,7 @@ const history = useHistoryStore();
 const speedTest = useSpeedTestStore();
 const storage = useStorageStore();
 const personalisation = usePersonalisationStore();
+const targetsStore = useTargetsStore();
 
 const { summary, connectionState } = storeToRefs(monitor);
 const { points: historyPoints, targetSeries, events, eventTotal, rangeError, isRangeActive } = storeToRefs(history);
@@ -48,7 +54,7 @@ const {
   policyNote: speedPolicyNote,
 } = storeToRefs(speedTest);
 const { stats: storageStats } = storeToRefs(storage);
-const { eventPage, speedTestPage } = storeToRefs(personalisation);
+const { eventPage, speedTestPage, liveChecksPage } = storeToRefs(personalisation);
 
 const rangeFrom = computed({
   get: () => personalisation.rangeFrom,
@@ -59,18 +65,11 @@ const rangeTo = computed({
   set: (value: string) => personalisation.setRangeTo(value),
 });
 
-const now = ref(Date.now());
-let timer: number | undefined;
 let historyTimer: number | undefined;
 let eventSource: EventSource | undefined;
 
 const headline = computed(() => statusHeadline(summary.value?.overallStatus ?? 'unknown'));
-const elapsed = computed(() => formatDuration(Math.max(0, now.value - (summary.value?.startedAt ?? Date.now()))));
 const isIndefinite = computed(() => summary.value?.endsAt == null);
-const remaining = computed(() => {
-  if (!summary.value?.endsAt) return 'Live';
-  return formatDuration(Math.max(0, summary.value.endsAt - now.value));
-});
 const gateway = computed(() => summary.value?.targets.find((target) => target.scope === 'gateway'));
 const worstLoss = computed(() => Math.max(...(summary.value?.targets.map((target) => target.packetLossPct) ?? [0])));
 const worstJitter = computed(() => Math.max(...(summary.value?.targets.map((target) => target.jitterMs ?? 0) ?? [0])));
@@ -111,18 +110,31 @@ function setSpeedTestPage(page: number): void {
   void speedTest.refreshTests();
 }
 
+function setLiveChecksPage(page: number): void {
+  personalisation.setLiveChecksPage(Math.max(0, page - 1));
+}
+
+function startHistoryRefresh(): void {
+  if (historyTimer) window.clearInterval(historyTimer);
+  historyTimer = window.setInterval(() => {
+    if (document.visibilityState === 'hidden') return;
+    void refreshRangeData();
+  }, 10_000);
+}
+
+function handleVisibilityChange(): void {
+  if (document.visibilityState === 'visible') {
+    void refreshRangeData();
+  }
+}
+
 onMounted(async () => {
-  await personalisation.fetchPreferences(true);
-
-  timer = window.setInterval(() => {
-    now.value = Date.now();
-  }, 1000);
-
-  await monitor.loadStatus();
+  await Promise.all([personalisation.fetchPreferences(true), monitor.loadStatus()]);
   monitor.seedEventsFromSummary(EVENT_PAGE_SIZE);
 
-  await Promise.all([speedTest.refreshPolicy(), refreshRangeData()]);
-  historyTimer = window.setInterval(refreshRangeData, 10_000);
+  await Promise.allSettled([targetsStore.loadTargets(), speedTest.refreshPolicy(), refreshRangeData()]);
+  startHistoryRefresh();
+  document.addEventListener('visibilitychange', handleVisibilityChange);
 
   eventSource = subscribeStatus(
     (payload) => monitor.applyStreamPayload(payload),
@@ -131,8 +143,8 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
-  if (timer) window.clearInterval(timer);
   if (historyTimer) window.clearInterval(historyTimer);
+  document.removeEventListener('visibilitychange', handleVisibilityChange);
   eventSource?.close();
 });
 </script>
@@ -140,6 +152,7 @@ onUnmounted(() => {
 <template>
   <AppChrome />
   <main class="shell">
+    <DashboardNav />
     <HeroSection
       :app-name="appName"
       :overall-status="summary?.overallStatus ?? 'unknown'"
@@ -147,8 +160,8 @@ onUnmounted(() => {
       :diagnosis="summary?.diagnosis ?? 'The dashboard will update every second.'"
       :network="summary?.network"
       :is-indefinite="isIndefinite"
-      :elapsed="elapsed"
-      :remaining="remaining"
+      :started-at="summary?.startedAt"
+      :ends-at="summary?.endsAt"
     />
 
     <SummaryMetricsSection
@@ -156,6 +169,16 @@ onUnmounted(() => {
       :gateway-latency-ms="gateway?.lastLatencyMs ?? null"
       :worst-loss="worstLoss"
       :worst-jitter="worstJitter"
+    />
+
+    <TargetsConfigSection />
+
+    <LiveChecksSection
+      :targets="summary?.targets ?? []"
+      :connection-state="connectionState"
+      :page="liveChecksPage"
+      :page-size="LIVE_CHECKS_PAGE_SIZE"
+      @update:page="setLiveChecksPage"
     />
 
     <TimelineSection
@@ -170,8 +193,6 @@ onUnmounted(() => {
       @set-today="setToday"
       @clear-range="clearRange"
     />
-
-    <LiveChecksSection :targets="summary?.targets ?? []" :connection-state="connectionState" />
 
     <SpeedTestSection
       :latest-speed-test="latestSpeedTest"
@@ -209,7 +230,16 @@ onUnmounted(() => {
   <footer class="site-footer">
     <p>
       Built on Vibes by
-      <a href="https://github.com/solomonmarvel97" target="_blank" rel="noopener noreferrer">Marvelous Solomon</a>
+      <a href="https://solomonmarvel.com" target="_blank" rel="noopener noreferrer">Marvelous Solomon</a>
+      <a
+        class="site-footer__github"
+        href="https://github.com/solomonmarvel97"
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label="Marvelous Solomon on GitHub"
+      >
+        <PhGithubLogo class="site-footer__github-icon" weight="fill" aria-hidden="true" />
+      </a>
     </p>
   </footer>
 </template>

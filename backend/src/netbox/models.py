@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Any, Literal
 
 Status = Literal["operational", "degraded", "down", "unknown"]
 Scope = Literal["gateway", "external"]
+TargetType = Literal["website", "api", "host", "port", "dns"]
+TargetProtocol = Literal["http", "https", "tcp", "icmp", "dns"]
 
 
 @dataclass(frozen=True)
@@ -17,6 +19,32 @@ class Target:
     host: str
     label: str
     scope: Scope
+    type: TargetType = "host"
+    protocol: TargetProtocol = "icmp"
+    group: str = "Default"
+    environment: str = "local"
+    enabled: bool = True
+    interval_ms: int = 1_000
+    timeout_ms: int = 900
+    config: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return the API representation used by CRUD endpoints."""
+
+        return {
+            "id": self.id,
+            "host": self.host,
+            "label": self.label,
+            "scope": self.scope,
+            "type": self.type,
+            "protocol": self.protocol,
+            "group": self.group,
+            "environment": self.environment,
+            "enabled": self.enabled,
+            "intervalMs": self.interval_ms,
+            "timeoutMs": self.timeout_ms,
+            "config": self.config,
+        }
 
 
 @dataclass(frozen=True)
@@ -50,6 +78,7 @@ class MonitorConfig:
     db_path: str
     target_args: list[str] = field(default_factory=list)
     default_target_args: list[str] = field(default_factory=list)
+    default_target_seeds: list[dict[str, Any]] = field(default_factory=list)
     security_headers: dict[str, str] = field(default_factory=dict)
     speed_config: dict[str, object] = field(default_factory=dict)
     storage_config: dict[str, object] = field(default_factory=dict)
@@ -69,6 +98,8 @@ class PingResult:
     checked_at: int
     duration_ms: int
     error: str | None
+    type: TargetType = "host"
+    protocol: TargetProtocol = "icmp"
 
     def to_dict(self) -> dict[str, object]:
         """Return the JSON/API representation used by state and storage."""
@@ -83,4 +114,6 @@ class PingResult:
             "checkedAt": self.checked_at,
             "durationMs": self.duration_ms,
             "error": self.error,
+            "type": self.type,
+            "protocol": self.protocol,
         }

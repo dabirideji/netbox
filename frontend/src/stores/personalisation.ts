@@ -7,6 +7,9 @@ import {
   type DashboardSectionId,
   type DashboardSectionsCollapsedState,
 } from '../dashboardSections';
+import { mergeTaxonomyValues, uniqueSortedTaxonomy } from '../targetTaxonomy';
+import { debounce } from '../utils/schedule';
+import type { MonitorTarget } from '../types';
 import { PREFERENCE_KEYS, type TimelineRangePreference } from './preferenceKeys';
 
 const CACHE_TTL = 1000 * 60 * 10;
@@ -45,6 +48,10 @@ export const usePersonalisationStore = defineStore(
     const rangeTo = ref('');
     const eventPage = ref(0);
     const speedTestPage = ref(0);
+    const liveChecksPage = ref(0);
+    const targetsPage = ref(0);
+    const targetGroups = ref<string[]>([]);
+    const targetEnvironments = ref<string[]>([]);
 
     let localUiDirty = false;
     let pendingRemotePatch: Record<string, unknown> | null = null;
@@ -61,7 +68,23 @@ export const usePersonalisationStore = defineStore(
         } satisfies TimelineRangePreference,
         [PREFERENCE_KEYS.eventPage]: eventPage.value,
         [PREFERENCE_KEYS.speedTestPage]: speedTestPage.value,
+        [PREFERENCE_KEYS.liveChecksPage]: liveChecksPage.value,
+        [PREFERENCE_KEYS.targetsPage]: targetsPage.value,
+        [PREFERENCE_KEYS.targetGroups]: [...targetGroups.value],
+        [PREFERENCE_KEYS.targetEnvironments]: [...targetEnvironments.value],
       };
+    }
+
+    function normalizeTaxonomyPreference(value: unknown): string[] {
+      if (!Array.isArray(value)) return [];
+      return uniqueSortedTaxonomy(value.filter((item): item is string => typeof item === 'string'));
+    }
+
+    function queueTargetTaxonomyPatch(): void {
+      queuePreferencePatch({
+        [PREFERENCE_KEYS.targetGroups]: [...targetGroups.value],
+        [PREFERENCE_KEYS.targetEnvironments]: [...targetEnvironments.value],
+      });
     }
 
     function applyPreferencesFromServer(prefs: Record<string, unknown> | null | undefined): void {
@@ -84,6 +107,22 @@ export const usePersonalisationStore = defineStore(
       }
       if (typeof prefs[PREFERENCE_KEYS.speedTestPage] === 'number') {
         speedTestPage.value = Math.max(0, prefs[PREFERENCE_KEYS.speedTestPage] as number);
+      }
+      if (typeof prefs[PREFERENCE_KEYS.liveChecksPage] === 'number') {
+        liveChecksPage.value = Math.max(0, prefs[PREFERENCE_KEYS.liveChecksPage] as number);
+      }
+      if (typeof prefs[PREFERENCE_KEYS.targetsPage] === 'number') {
+        targetsPage.value = Math.max(0, prefs[PREFERENCE_KEYS.targetsPage] as number);
+      }
+
+      const groups = prefs[PREFERENCE_KEYS.targetGroups];
+      if (groups !== undefined) {
+        targetGroups.value = normalizeTaxonomyPreference(groups);
+      }
+
+      const environments = prefs[PREFERENCE_KEYS.targetEnvironments];
+      if (environments !== undefined) {
+        targetEnvironments.value = normalizeTaxonomyPreference(environments);
       }
     }
 
@@ -120,10 +159,14 @@ export const usePersonalisationStore = defineStore(
       }
     }
 
+    const flushRemoteQueueDebounced = debounce(() => {
+      void flushRemoteQueue();
+    }, 350);
+
     function queuePreferencePatch(patch: Record<string, unknown>): void {
       pendingRemotePatch = { ...(pendingRemotePatch ?? {}), ...patch };
       localUiDirty = true;
-      void flushRemoteQueue();
+      flushRemoteQueueDebounced();
     }
 
     function queueRemoteSync(): void {
@@ -151,7 +194,7 @@ export const usePersonalisationStore = defineStore(
         return preferences.value;
       } catch (err) {
         error.value = err instanceof Error ? err.message : 'Failed to fetch preferences';
-        if (!hasData.value) throw err;
+        applyPreferencesFromServer(preferences.value);
         return preferences.value;
       } finally {
         loading.value = false;
@@ -219,9 +262,91 @@ export const usePersonalisationStore = defineStore(
       markUiDirtyAndSync();
     }
 
+    function setLiveChecksPage(page: number): void {
+      liveChecksPage.value = Math.max(0, page);
+      markUiDirtyAndSync();
+    }
+
+    function setTargetsPage(page: number): void {
+      targetsPage.value = Math.max(0, page);
+      markUiDirtyAndSync();
+    }
+
+    function syncTargetTaxonomyFromTargets(targets: MonitorTarget[]): void {
+      const groups = targets.map((target) => target.group);
+      const environments = targets.map((target) => target.environment);
+      const nextGroups = mergeTaxonomyValues(targetGroups.value, ...groups);
+      const nextEnvironments = mergeTaxonomyValues(targetEnvironments.value, ...environments);
+
+      if (
+        nextGroups.join('\0') === targetGroups.value.join('\0') &&
+        nextEnvironments.join('\0') === targetEnvironments.value.join('\0')
+      ) {
+        return;
+      }
+
+      targetGroups.value = nextGroups;
+      targetEnvironments.value = nextEnvironments;
+      queueTargetTaxonomyPatch();
+    }
+
+    function registerTargetTaxonomy(group: string, environment: string): void {
+      const nextGroups = mergeTaxonomyValues(targetGroups.value, group);
+      const nextEnvironments = mergeTaxonomyValues(targetEnvironments.value, environment);
+
+      if (
+        nextGroups.join('\0') === targetGroups.value.join('\0') &&
+        nextEnvironments.join('\0') === targetEnvironments.value.join('\0')
+      ) {
+        return;
+      }
+
+      targetGroups.value = nextGroups;
+      targetEnvironments.value = nextEnvironments;
+      queueTargetTaxonomyPatch();
+    }
+
+    function addTargetGroup(value: string): void {
+      const next = mergeTaxonomyValues(targetGroups.value, value);
+      if (next.join('\0') === targetGroups.value.join('\0')) return;
+      targetGroups.value = next;
+      queueTargetTaxonomyPatch();
+    }
+
+    function addTargetEnvironment(value: string): void {
+      const next = mergeTaxonomyValues(targetEnvironments.value, value);
+      if (next.join('\0') === targetEnvironments.value.join('\0')) return;
+      targetEnvironments.value = next;
+      queueTargetTaxonomyPatch();
+    }
+
+    function removeTargetGroup(value: string): void {
+      targetGroups.value = targetGroups.value.filter((group) => group !== value);
+      queueTargetTaxonomyPatch();
+    }
+
+    function removeTargetEnvironment(value: string): void {
+      targetEnvironments.value = targetEnvironments.value.filter((environment) => environment !== value);
+      queueTargetTaxonomyPatch();
+    }
+
+    async function syncPreferencesNow(): Promise<void> {
+      const deadline = Date.now() + 5_000;
+
+      while (Date.now() < deadline) {
+        await flushRemoteQueue();
+        if (pendingRemotePatch === null && !remoteSyncRunning) return;
+        await new Promise<void>((resolve) => {
+          window.setTimeout(resolve, 20);
+        });
+      }
+    }
+
     function resetRangePagination(): void {
       eventPage.value = 0;
       speedTestPage.value = 0;
+      liveChecksPage.value = 0;
+      targetsPage.value = 0;
       markUiDirtyAndSync();
     }
 
@@ -230,6 +355,8 @@ export const usePersonalisationStore = defineStore(
       rangeTo.value = '';
       eventPage.value = 0;
       speedTestPage.value = 0;
+      liveChecksPage.value = 0;
+      targetsPage.value = 0;
       markUiDirtyAndSync();
     }
 
@@ -239,6 +366,8 @@ export const usePersonalisationStore = defineStore(
       rangeTo.value = formatDateTimeInput(end);
       eventPage.value = 0;
       speedTestPage.value = 0;
+      liveChecksPage.value = 0;
+      targetsPage.value = 0;
       markUiDirtyAndSync();
     }
 
@@ -249,6 +378,8 @@ export const usePersonalisationStore = defineStore(
       rangeTo.value = formatDateTimeInput(Date.now());
       eventPage.value = 0;
       speedTestPage.value = 0;
+      liveChecksPage.value = 0;
+      targetsPage.value = 0;
       markUiDirtyAndSync();
     }
 
@@ -265,6 +396,8 @@ export const usePersonalisationStore = defineStore(
       rangeTo.value = '';
       eventPage.value = 0;
       speedTestPage.value = 0;
+      liveChecksPage.value = 0;
+      targetsPage.value = 0;
     }
 
     return {
@@ -278,6 +411,10 @@ export const usePersonalisationStore = defineStore(
       rangeTo,
       eventPage,
       speedTestPage,
+      liveChecksPage,
+      targetsPage,
+      targetGroups,
+      targetEnvironments,
       fetchPreferences: fetchPreferencesFromServer,
       updatePreferences,
       applyPreferencesFromServer,
@@ -289,6 +426,15 @@ export const usePersonalisationStore = defineStore(
       commitTimelineRange,
       setEventPage,
       setSpeedTestPage,
+      setLiveChecksPage,
+      setTargetsPage,
+      syncTargetTaxonomyFromTargets,
+      registerTargetTaxonomy,
+      addTargetGroup,
+      addTargetEnvironment,
+      removeTargetGroup,
+      removeTargetEnvironment,
+      syncPreferencesNow,
       resetRangePagination,
       clearRange,
       setLastHourRange,
@@ -308,6 +454,10 @@ export const usePersonalisationStore = defineStore(
         'rangeTo',
         'eventPage',
         'speedTestPage',
+        'liveChecksPage',
+        'targetsPage',
+        'targetGroups',
+        'targetEnvironments',
       ],
     },
   },

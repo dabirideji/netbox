@@ -8,11 +8,15 @@ const props = withDefaults(
     currentPage: number;
     totalItems: number;
     itemsPerPage: number;
+    orderLabel?: string;
+    showSummary?: boolean;
   }>(),
   {
     currentPage: 1,
     totalItems: 0,
     itemsPerPage: 10,
+    orderLabel: 'newest first',
+    showSummary: true,
   },
 );
 
@@ -49,9 +53,9 @@ function goToPage(page: number): void {
 </script>
 
 <template>
-  <nav class="ui-pagination" aria-label="Pagination">
-    <span class="ui-pagination__summary">
-      {{ startItem }}–{{ endItem }} of {{ totalItems }} · Page {{ safePage }} of {{ totalPages }} · newest first
+  <nav class="ui-pagination" :class="{ 'ui-pagination--compact': !showSummary }" aria-label="Pagination">
+    <span v-if="showSummary" class="ui-pagination__summary">
+      {{ startItem }}–{{ endItem }} of {{ totalItems }} · Page {{ safePage }} of {{ totalPages }} · {{ orderLabel }}
     </span>
     <div class="ui-pagination__controls">
       <Button

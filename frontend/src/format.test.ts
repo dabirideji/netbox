@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatDate, formatDuration, formatMs, formatPct, networkLabel, statusHeadline } from './format';
+import { formatDate, formatDateTime, formatDuration, formatMs, formatPct, networkLabel, statusHeadline } from './format';
 
 describe('format helpers', () => {
   it('formats status headline', () => {
@@ -21,6 +21,13 @@ describe('format helpers', () => {
 
   it('formats event dates', () => {
     expect(formatDate(Date.UTC(2026, 5, 10))).toContain('10');
+  });
+
+  it('formats list timestamps with date before time', () => {
+    const timestamp = new Date(2026, 5, 10, 19, 25).getTime();
+    const label = formatDateTime(timestamp);
+    expect(label.indexOf('10')).toBeLessThan(label.indexOf('25'));
+    expect(label).toContain('Jun');
   });
 
   it('prefers visible wifi SSID', () => {

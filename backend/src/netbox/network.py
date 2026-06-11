@@ -24,7 +24,7 @@ def build_targets(
     if gateway:
         targets.append(Target("gateway", gateway, "Local Gateway", "gateway"))
 
-    external_targets = default_external_targets or [
+    external_targets = default_external_targets if default_external_targets is not None else [
         "1.1.1.1:Cloudflare DNS:external",
         "8.8.8.8:Google DNS:external",
     ]

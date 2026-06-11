@@ -2,6 +2,7 @@ export type ThemePreference = 'light' | 'dark' | 'system';
 export type ResolvedTheme = 'light' | 'dark';
 
 export const THEME_STORAGE_KEY = 'netbox-theme';
+export const DEFAULT_THEME_PREFERENCE: ThemePreference = 'dark';
 
 const THEME_CYCLE: ThemePreference[] = ['light', 'dark', 'system'];
 
@@ -15,14 +16,14 @@ export function resolveTheme(preference: ThemePreference): ResolvedTheme {
 }
 
 export function getStoredThemePreference(): ThemePreference {
-  if (typeof window === 'undefined') return 'system';
+  if (typeof window === 'undefined') return DEFAULT_THEME_PREFERENCE;
 
   const stored = localStorage.getItem(THEME_STORAGE_KEY);
   if (stored === 'light' || stored === 'dark' || stored === 'system') {
     return stored;
   }
 
-  return 'system';
+  return DEFAULT_THEME_PREFERENCE;
 }
 
 export function applyThemePreference(preference: ThemePreference): ResolvedTheme {

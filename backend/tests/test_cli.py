@@ -2,7 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from netbox.cli import main, parse_args, resolve_static_dir
+from netbox.cli import apply_runtime_target_seeds, main, parse_args, resolve_static_dir, seed_defaults
+from netbox.storage import StatusStore
 
 
 def test_parse_args_validates_ranges() -> None:
@@ -54,3 +55,32 @@ def test_resolve_static_dir_uses_dev_placeholder_without_dist(tmp_path: Path, mo
 
 def test_main_returns_configuration_error_for_invalid_args() -> None:
     assert main(["--duration", "1ms"]) == 2
+
+
+def test_main_seed_command_inserts_bundled_targets(tmp_path: Path) -> None:
+    db_path = tmp_path / "netbox.sqlite3"
+    assert main(["seed", "--db-path", str(db_path)]) == 0
+
+    store = StatusStore(str(db_path))
+    try:
+        ids = {target.id for target in store.list_targets()}
+        assert "example-website" in ids
+    finally:
+        store.close()
+
+
+def test_apply_runtime_target_seeds_does_not_restore_deleted_bundled_targets(tmp_path: Path) -> None:
+    db_path = tmp_path / "netbox.sqlite3"
+    config = parse_args(["--db-path", str(db_path)])
+
+    assert seed_defaults(config) == 0
+
+    store = StatusStore(str(db_path))
+    try:
+        assert store.delete_target("example-website")
+        apply_runtime_target_seeds(config, store, gateway="192.168.1.1")
+        ids = {target.id for target in store.list_targets()}
+        assert "example-website" not in ids
+        assert "gateway" in ids
+    finally:
+        store.close()

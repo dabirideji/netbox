@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   applyThemePreference,
   cycleThemePreference,
+  getStoredThemePreference,
   resolveTheme,
   setThemePreference,
   THEME_STORAGE_KEY,
@@ -42,6 +43,11 @@ describe('theme', () => {
     expect(themePreferenceLabel('light')).toBe('Light');
     expect(themePreferenceLabel('dark')).toBe('Dark');
     expect(themePreferenceLabel('system')).toBe('System');
+  });
+
+  it('defaults to dark when nothing is stored', () => {
+    expect(getStoredThemePreference()).toBe('dark');
+    expect(applyThemePreference(getStoredThemePreference())).toBe('dark');
   });
 
   it('persists preference and applies resolved theme to the document root', () => {

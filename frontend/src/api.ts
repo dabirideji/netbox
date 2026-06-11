@@ -2,9 +2,11 @@
 
 import { decrementApiLoading, incrementApiLoading } from './composables/useApiLoading';
 import { appendRangeParams, type TimestampRange } from './range';
+import { parseStreamPayload } from './workers/streamParser';
 import type {
   EventsResponse,
   HistoryResponse,
+  LiveCheckResult,
   SpeedTestRecordPayload,
   SpeedTestsResponse,
   PreferencesResponse,
@@ -14,6 +16,10 @@ import type {
   StorageStatsResponse,
   StreamPayload,
   TargetHistoryResponse,
+  TargetPayload,
+  TargetResponse,
+  TargetResultsResponse,
+  TargetsResponse,
   WallpaperResponse,
 } from './types';
 
@@ -25,6 +31,13 @@ async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Promise<R
   } finally {
     decrementApiLoading();
   }
+}
+
+function apiRequestError(action: string, status: number): Error {
+  if (status === 502 || status === 503 || status === 504) {
+    return new Error('Backend unavailable. Start the monitor with make run.');
+  }
+  return new Error(`${action} request failed: ${status}`);
 }
 
 /** Fetch the latest monitor snapshot. */
@@ -48,7 +61,9 @@ export function subscribeStatus(
   const eventSource = new EventSource('/events');
 
   eventSource.onmessage = (message) => {
-    onPayload(JSON.parse(message.data) as StreamPayload);
+    void parseStreamPayload(String(message.data))
+      .then(onPayload)
+      .catch(() => onError());
   };
   eventSource.onerror = onError;
 
@@ -98,6 +113,107 @@ export async function fetchTargetHistory(points = 360, range: TimestampRange = {
   }
 
   return response.json() as Promise<TargetHistoryResponse>;
+}
+
+/** Fetch the database-managed target configuration list. */
+export async function fetchTargets(): Promise<TargetsResponse> {
+  const response = await apiFetch('/api/targets', {
+    headers: { Accept: 'application/json' },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Targets request failed: ${response.status}`);
+  }
+
+  return response.json() as Promise<TargetsResponse>;
+}
+
+/** Create a new monitor target. */
+export async function createTarget(payload: TargetPayload): Promise<TargetResponse> {
+  const response = await apiFetch('/api/targets', {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const error = await readApiError(response, 'Target create failed');
+    throw new Error(error);
+  }
+
+  return response.json() as Promise<TargetResponse>;
+}
+
+/** Patch one monitor target. */
+export async function patchTarget(targetId: string, payload: TargetPayload): Promise<TargetResponse> {
+  const response = await apiFetch(`/api/targets/${encodeURIComponent(targetId)}`, {
+    method: 'PATCH',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const error = await readApiError(response, 'Target update failed');
+    throw new Error(error);
+  }
+
+  return response.json() as Promise<TargetResponse>;
+}
+
+/** Delete one monitor target. */
+export async function deleteTarget(targetId: string): Promise<{ deleted: boolean }> {
+  const response = await apiFetch(`/api/targets/${encodeURIComponent(targetId)}`, {
+    method: 'DELETE',
+    headers: { Accept: 'application/json' },
+  });
+
+  if (!response.ok) {
+    const error = await readApiError(response, 'Target delete failed');
+    throw new Error(error);
+  }
+
+  return response.json() as Promise<{ deleted: boolean }>;
+}
+
+/** Run one target check immediately. */
+export async function checkTargetNow(targetId: string): Promise<{ result: LiveCheckResult; summary: StatusSummary }> {
+  const response = await apiFetch(`/api/targets/${encodeURIComponent(targetId)}/check-now`, {
+    method: 'POST',
+    headers: { Accept: 'application/json' },
+  });
+
+  if (!response.ok) {
+    const error = await readApiError(response, 'Target check failed');
+    throw new Error(error);
+  }
+
+  return response.json() as Promise<{ result: LiveCheckResult; summary: StatusSummary }>;
+}
+
+/** Fetch raw persisted results for one target. */
+export async function fetchTargetResults(
+  targetId: string,
+  limit = 100,
+  range: TimestampRange = {},
+  offset = 0,
+): Promise<TargetResultsResponse> {
+  const searchParams = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+  appendRangeParams(searchParams, range);
+  const response = await apiFetch(`/api/targets/${encodeURIComponent(targetId)}/results?${searchParams}`, {
+    headers: { Accept: 'application/json' },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Target results request failed: ${response.status}`);
+  }
+
+  return response.json() as Promise<TargetResultsResponse>;
 }
 
 /** Fetch persisted speed-test history and the current run policy. */
@@ -150,7 +266,7 @@ export async function fetchPreferences(): Promise<PreferencesResponse> {
   });
 
   if (!response.ok) {
-    throw new Error(`Preferences request failed: ${response.status}`);
+    throw apiRequestError('Preferences', response.status);
   }
 
   return response.json() as Promise<PreferencesResponse>;
@@ -217,4 +333,9 @@ export async function fetchWallpaper(): Promise<WallpaperResponse> {
   }
 
   return response.json() as Promise<WallpaperResponse>;
+}
+
+async function readApiError(response: Response, fallback: string): Promise<string> {
+  const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+  return payload?.error ?? `${fallback}: ${response.status}`;
 }

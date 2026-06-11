@@ -6,6 +6,10 @@ export const PREFERENCE_KEYS = {
   timelineRange: 'timeline_range',
   eventPage: 'event_page',
   speedTestPage: 'speed_test_page',
+  liveChecksPage: 'live_checks_page',
+  targetsPage: 'targets_page',
+  targetGroups: 'target_groups',
+  targetEnvironments: 'target_environments',
 } as const;
 
 export interface TimelineRangePreference {
@@ -18,4 +22,8 @@ export interface UiPreferences {
   [PREFERENCE_KEYS.timelineRange]?: TimelineRangePreference;
   [PREFERENCE_KEYS.eventPage]?: number;
   [PREFERENCE_KEYS.speedTestPage]?: number;
+  [PREFERENCE_KEYS.liveChecksPage]?: number;
+  [PREFERENCE_KEYS.targetsPage]?: number;
+  [PREFERENCE_KEYS.targetGroups]?: string[];
+  [PREFERENCE_KEYS.targetEnvironments]?: string[];
 }

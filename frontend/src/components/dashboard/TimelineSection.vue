@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import {
   chartViewBox,
   liveTargetHistoryToSeverityPoints,
@@ -12,7 +12,8 @@ import {
 import { Button } from '../ui/button';
 import { DateTimeInput } from '../ui/date-time-input';
 import { formatClock, formatDate, formatMs, formatPct } from '../../format';
-import type { HistoryPoint, TargetHistorySeries, TargetSummary } from '../../types';
+import { targetServiceIcon } from '../../targetIcons';
+import type { HistoryPoint, TargetHistorySeries, TargetProtocol, TargetSummary, TargetType } from '../../types';
 import DashboardSectionCard from './DashboardSectionCard.vue';
 
 const rangeFrom = defineModel<string>('rangeFrom', { default: '' });
@@ -25,14 +26,68 @@ const props = defineProps<{
   targets: TargetSummary[];
 }>();
 
-const selectedTabId = ref<string>('overview');
+interface TimelineTab {
+  id: string;
+  label: string;
+  type?: TargetType;
+  protocol?: TargetProtocol;
+  overview?: boolean;
+}
 
-const tabs = computed(() => {
-  const overview = [{ id: 'overview', label: 'Overview' }];
+const selectedTabId = ref<string>('overview');
+const tabsScrollRef = ref<HTMLElement | null>(null);
+const tabsFadeLeft = ref(false);
+const tabsFadeRight = ref(false);
+
+const tabs = computed((): TimelineTab[] => {
+  const overview: TimelineTab = { id: 'overview', label: 'Overview', overview: true };
   if (props.targetHistory.length) {
-    return [...overview, ...props.targetHistory.map((target) => ({ id: target.id, label: target.label }))];
+    return [
+      overview,
+      ...props.targetHistory.map((target) => ({
+        id: target.id,
+        label: target.label,
+        type: target.type,
+        protocol: target.protocol,
+      })),
+    ];
   }
-  return [...overview, ...props.targets.map((target) => ({ id: target.id, label: target.label }))];
+  return [
+    overview,
+    ...props.targets.map((target) => ({
+      id: target.id,
+      label: target.label,
+      type: target.type,
+      protocol: target.protocol,
+    })),
+  ];
+});
+
+function updateTabsScrollFades(): void {
+  const element = tabsScrollRef.value;
+  if (!element) {
+    tabsFadeLeft.value = false;
+    tabsFadeRight.value = false;
+    return;
+  }
+
+  const maxScroll = element.scrollWidth - element.clientWidth;
+  tabsFadeLeft.value = element.scrollLeft > 4;
+  tabsFadeRight.value = maxScroll > 4 && element.scrollLeft < maxScroll - 4;
+}
+
+let tabsResizeObserver: ResizeObserver | undefined;
+
+onMounted(() => {
+  void nextTick(updateTabsScrollFades);
+  tabsResizeObserver = new ResizeObserver(() => updateTabsScrollFades());
+  if (tabsScrollRef.value) {
+    tabsResizeObserver.observe(tabsScrollRef.value);
+  }
+});
+
+onUnmounted(() => {
+  tabsResizeObserver?.disconnect();
 });
 
 watch(
@@ -41,8 +96,15 @@ watch(
     if (selectedTabId.value !== 'overview' && !next.some((tab) => tab.id === selectedTabId.value)) {
       selectedTabId.value = 'overview';
     }
+
+    void nextTick(() => {
+      if (tabsScrollRef.value && tabsResizeObserver) {
+        tabsResizeObserver.observe(tabsScrollRef.value);
+      }
+      updateTabsScrollFades();
+    });
   },
-  { immediate: true },
+  { immediate: true, flush: 'post' },
 );
 
 const activeTabLabel = computed(
@@ -83,8 +145,9 @@ function segmentTitle(index: number, status: SeveritySegment['status']): string 
   const points = activePoints.value;
   const point = points[Math.min(index + 1, points.length - 1)] ?? points[index];
   if (!point) return 'No chart data yet';
-  return `${activeTabLabel.value} · ${formatDate(point.at)} ${formatClock(point.at)} · ${status} · ${formatMs(
-    point.avgLatencyMs,
+  const timestamp = point.at ?? 0;
+  return `${activeTabLabel.value} · ${formatDate(timestamp)} ${formatClock(timestamp)} · ${status} · ${formatMs(
+    point.avgLatencyMs ?? null,
   )} avg · ${formatPct(point.failurePct ?? 0)} loss`;
 }
 
@@ -113,19 +176,43 @@ const emit = defineEmits<{
     </div>
     <p v-if="rangeError" class="range-error">{{ rangeError }}</p>
 
-    <div v-if="tabs.length > 1" class="timeline-tabs" role="tablist" aria-label="Timeline target">
-      <button
-        v-for="tab in tabs"
-        :key="tab.id"
-        type="button"
-        role="tab"
-        class="timeline-tabs__button"
-        :class="{ 'is-active': selectedTabId === tab.id }"
-        :aria-selected="selectedTabId === tab.id"
-        @click="selectedTabId = tab.id"
+    <div v-if="tabs.length > 1" class="timeline-tabs-shell horizontal-scroll-shell">
+      <div
+        class="horizontal-scroll-fade horizontal-scroll-fade--left"
+        :class="{ 'is-visible': tabsFadeLeft }"
+        aria-hidden="true"
+      />
+      <div
+        ref="tabsScrollRef"
+        class="timeline-tabs-scroll horizontal-scroll-track"
+        role="tablist"
+        aria-label="Timeline target"
+        @scroll="updateTabsScrollFades"
       >
-        {{ tab.label }}
-      </button>
+        <button
+          v-for="tab in tabs"
+          :key="tab.id"
+          type="button"
+          role="tab"
+          class="timeline-tabs__button"
+          :class="{ 'is-active': selectedTabId === tab.id }"
+          :aria-selected="selectedTabId === tab.id"
+          @click="selectedTabId = tab.id"
+        >
+          <component
+            :is="targetServiceIcon(tab.type, tab.protocol, tab.overview)"
+            class="timeline-tabs__icon"
+            weight="bold"
+            aria-hidden="true"
+          />
+          {{ tab.label }}
+        </button>
+      </div>
+      <div
+        class="horizontal-scroll-fade horizontal-scroll-fade--right"
+        :class="{ 'is-visible': tabsFadeRight }"
+        aria-hidden="true"
+      />
     </div>
 
     <div class="chart-card">
@@ -158,7 +245,7 @@ const emit = defineEmits<{
             Latest
             {{
               latestHistoryPoint
-                ? `${formatMs(latestHistoryPoint.avgLatencyMs)} · ${formatPct(latestHistoryPoint.failurePct ?? 0)} loss`
+                ? `${formatMs(latestHistoryPoint.avgLatencyMs ?? null)} · ${formatPct(latestHistoryPoint.failurePct ?? 0)} loss`
                 : '-'
             }}
           </span>

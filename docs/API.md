@@ -100,6 +100,8 @@ Returns persisted history grouped by target for historical target breakdowns.
       "host": "192.168.1.1",
       "label": "Local Gateway",
       "scope": "gateway",
+      "type": "host",
+      "protocol": "icmp",
       "points": [
         {
           "at": 1781090000000,
@@ -110,6 +112,90 @@ Returns persisted history grouped by target for historical target breakdowns.
           "error": null
         }
       ]
+    }
+  ]
+}
+```
+
+## Target CRUD
+
+Targets are stored in SQLite after first startup. `config/targets.json` seeds defaults only when an id is absent.
+
+### `GET /api/targets`
+
+Returns all configured targets.
+
+### `POST /api/targets`
+
+Creates a target. The backend validates common fields and protocol-specific config.
+
+```json
+{
+  "label": "API health",
+  "type": "api",
+  "protocol": "https",
+  "scope": "external",
+  "group": "Production",
+  "environment": "local",
+  "enabled": true,
+  "intervalMs": 1000,
+  "timeoutMs": 900,
+  "config": {
+    "url": "https://example.com/health",
+    "method": "GET",
+    "expectedStatus": 200,
+    "keyword": "ok"
+  }
+}
+```
+
+Supported protocols:
+
+- `http` / `https`: `url`, `method`, `headers`, `expectedStatus`, optional `keyword`.
+- `tcp`: `host`, `port`.
+- `icmp`: `host`.
+- `dns`: `name`, `recordType`, optional `expectedValue`.
+
+### `GET /api/targets/{id}`
+
+Returns one target.
+
+### `PATCH /api/targets/{id}`
+
+Partially updates one target. SQLite remains the source of truth after seeding.
+
+### `DELETE /api/targets/{id}`
+
+Deletes the target configuration. Historical check rows are retained.
+
+### `POST /api/targets/{id}/check-now`
+
+Runs one immediate check and persists the result.
+
+### `GET /api/targets/{id}/results`
+
+Returns raw check results newest-first. Supports `from`, `to`, `limit`, and `offset`.
+
+## `GET /api/incidents`
+
+Returns durable incident windows derived from status transitions.
+
+```json
+{
+  "from": null,
+  "to": null,
+  "limit": 50,
+  "offset": 0,
+  "total": 1,
+  "incidents": [
+    {
+      "id": 1,
+      "targetId": "gateway",
+      "targetLabel": "Local Gateway",
+      "openedAt": 1781090060000,
+      "resolvedAt": null,
+      "status": "open",
+      "message": "Local Gateway changed from operational to degraded"
     }
   ]
 }

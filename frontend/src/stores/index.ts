@@ -1,7 +1,16 @@
 export { isReconnectingState, RECONNECTING_STATE, useMonitorStore } from './monitor';
+export { LIVE_CHECKS_PAGE_SIZE, TARGETS_PAGE_SIZE } from '../liveChecks';
 export { useHistoryStore, EVENT_PAGE_SIZE } from './history';
 export { useSpeedTestStore, SPEED_TEST_PAGE_SIZE } from './speedTest';
 export { useStorageStore } from './storage';
+export {
+  useTargetsStore,
+  TARGET_PROTOCOLS,
+  TARGET_SCOPES,
+  TARGET_TYPES,
+  defaultIntervalMs,
+  defaultTimeoutMs,
+} from './targets';
 export {
   usePersonalisationStore,
   applyDashboardSectionsCollapsedFromPreferences,

@@ -48,6 +48,16 @@ export function formatDate(timestamp: number): string {
   }).format(new Date(timestamp));
 }
 
+/** Compact timestamp for lists, e.g. "Jun 10, 7:25 PM". */
+export function formatDateTime(timestamp: number): string {
+  return new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(new Date(timestamp));
+}
+
 /** Human-readable label for the date picker trigger button. */
 export function formatDatePickerLabel(value: string): string {
   if (!value) return '';

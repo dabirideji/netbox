@@ -1,6 +1,6 @@
 # Netbox
 
-Local network stability monitor with a Python backend and Vue dashboard. Netbox pings your gateway and external targets every second, persists history in SQLite, and helps separate local network issues from upstream/ISP problems.
+Local network stability monitor with a Python backend and Vue dashboard. Netbox runs configurable HTTP/S, TCP, ICMP, and DNS checks from your machine, persists history in SQLite, and helps separate local network issues from upstream/ISP problems.
 
 ## Quick start
 
@@ -24,7 +24,7 @@ make run ARGS='--wifi-name "Office Wi-Fi"'
 
 | Command | Description |
 | --- | --- |
-| `make setup` | First-time install, folders, and local env |
+| `make setup` | First-time install, folders, local env, and default monitor targets |
 | `make install` | Install backend and frontend dependencies |
 | `make run` | Start backend + Vite dev server with hot reload |
 | `make run-prod` | Build frontend and run production-style backend |
@@ -58,7 +58,7 @@ Defaults live in `config/*.json`. Runtime values load from `.env` (local, gitign
 | --- | --- |
 | `config/backend.json` | Host, port, monitor thresholds, database path |
 | `config/frontend.json` | App name and dev-server defaults |
-| `config/targets.json` | Default external ping targets |
+| `config/targets.json` | Default target seeds for first startup |
 | `config/speed.json` | NDT7 speed-test policy |
 | `config/security.json` | Bind allow-list and security headers |
 | `.env.example` | Committed template - `make setup` copies this to `.env` |
@@ -70,7 +70,8 @@ Optional Pexels wallpaper support proxies nature images through the backend. Set
 
 ## Dashboard features
 
-- **Live monitoring** - gateway and external ping checks with SSE updates
+- **Configurable targets** - CRUD for HTTP/S, TCP, ICMP, and DNS checks
+- **Live monitoring** - gateway and external checks with SSE updates
 - **History and incidents** - persisted timeline, target breakdown, and paginated incident log
 - **Speed tests** - user-initiated M-Lab NDT7 runs with policy limits
 - **Theme** - light, dark, or system preference (stored in browser localStorage)

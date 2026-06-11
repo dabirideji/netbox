@@ -1,7 +1,8 @@
 import os
 from pathlib import Path
 
-from netbox.config import clean_env_value, load_env_file, load_env_files, resolve_project_path, target_to_arg
+from netbox.config import clean_env_value, load_default_target_seeds, load_env_file, load_env_files, resolve_project_path, target_to_arg
+from netbox.targets import target_from_seed
 
 
 def test_clean_env_value_strips_matching_quotes() -> None:
@@ -46,3 +47,18 @@ def test_target_to_arg_uses_structured_target_config() -> None:
 
 def test_resolve_project_path_keeps_absolute_paths(tmp_path: Path) -> None:
     assert resolve_project_path(str(tmp_path)) == str(tmp_path)
+
+
+def test_default_target_seeds_cover_all_protocols() -> None:
+    seeds = load_default_target_seeds()
+    protocols = {target_from_seed(seed, 1_000, 900).protocol for seed in seeds}
+
+    assert protocols == {"dns", "http", "https", "icmp", "tcp"}
+    assert {seed["id"] for seed in seeds} >= {
+        "example-dns",
+        "example-http",
+        "example-https",
+        "example-icmp",
+        "example-tcp",
+        "example-website",
+    }

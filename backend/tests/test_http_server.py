@@ -397,3 +397,91 @@ def test_status_server_serves_and_clears_storage(tmp_path: Path) -> None:
         server.shutdown()
         server.server_close()
         store.close()
+
+
+def test_status_server_cruds_targets(tmp_path: Path) -> None:
+    (tmp_path / "index.html").write_text("<div id='app'>ok</div>")
+    seed = Target("gateway", "127.0.0.1", "Loopback", "gateway")
+    store = StatusStore(tmp_path / "status.sqlite3")
+    store.seed_targets([seed])
+    state = MonitorState(config(), [seed], NetworkIdentity("Test", "Test", "en0", "Wi-Fi"), 0, store)
+    server = StatusServer(("127.0.0.1", 0), StatusHandler, state, tmp_path)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+
+    try:
+        port = server.server_address[1]
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/targets", timeout=3) as response:
+            initial = json.load(response)
+
+        create_request = urllib.request.Request(
+            f"http://127.0.0.1:{port}/api/targets",
+            data=json.dumps(
+                {
+                    "label": "Example",
+                    "protocol": "tcp",
+                    "type": "port",
+                    "scope": "external",
+                    "config": {"host": "example.com", "port": 443},
+                }
+            ).encode(),
+            method="POST",
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(create_request, timeout=3) as response:
+            created = json.load(response)
+
+        patch_request = urllib.request.Request(
+            f"http://127.0.0.1:{port}/api/targets/{created['target']['id']}",
+            data=json.dumps({"enabled": False}).encode(),
+            method="PATCH",
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(patch_request, timeout=3) as response:
+            updated = json.load(response)
+
+        delete_request = urllib.request.Request(
+            f"http://127.0.0.1:{port}/api/targets/{created['target']['id']}",
+            method="DELETE",
+        )
+        with urllib.request.urlopen(delete_request, timeout=3) as response:
+            deleted = json.load(response)
+
+        assert initial["targets"][0]["id"] == "gateway"
+        assert created["target"]["protocol"] == "tcp"
+        assert updated["target"]["enabled"] is False
+        assert deleted["deleted"] is True
+    finally:
+        state.stopping.set()
+        server.shutdown()
+        server.server_close()
+        store.close()
+
+
+def test_status_server_rejects_invalid_target_payload(tmp_path: Path) -> None:
+    (tmp_path / "index.html").write_text("<div id='app'>ok</div>")
+    store = StatusStore(tmp_path / "status.sqlite3")
+    state = MonitorState(config(), [], NetworkIdentity("Test", "Test", "en0", "Wi-Fi"), 0, store)
+    server = StatusServer(("127.0.0.1", 0), StatusHandler, state, tmp_path)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+
+    try:
+        port = server.server_address[1]
+        request = urllib.request.Request(
+            f"http://127.0.0.1:{port}/api/targets",
+            data=json.dumps({"label": "Bad", "protocol": "tcp", "config": {"port": 70000}}).encode(),
+            method="POST",
+            headers={"Content-Type": "application/json"},
+        )
+        try:
+            urllib.request.urlopen(request, timeout=3)
+        except urllib.error.HTTPError as error:
+            assert error.code == 400
+        else:
+            raise AssertionError("Expected invalid target payload to return HTTP 400")
+    finally:
+        state.stopping.set()
+        server.shutdown()
+        server.server_close()
+        store.close()

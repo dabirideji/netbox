@@ -2,6 +2,10 @@
 
 export type Status = 'operational' | 'degraded' | 'down' | 'unknown';
 
+export type TargetType = 'website' | 'api' | 'host' | 'port' | 'dns';
+export type TargetProtocol = 'http' | 'https' | 'tcp' | 'icmp' | 'dns';
+export type TargetScope = 'gateway' | 'external';
+
 /** Best-effort identity for the active network connection. */
 export interface NetworkIdentity {
   name: string;
@@ -23,11 +27,21 @@ export interface TargetSummary {
   id: string;
   host: string;
   label: string;
-  scope: 'gateway' | 'external';
+  scope: TargetScope;
+  type: TargetType;
+  protocol: TargetProtocol;
+  group: string;
+  environment: string;
+  enabled: boolean;
+  intervalMs: number;
+  timeoutMs: number;
+  config: Record<string, unknown>;
   currentStatus: Status;
   lastOk: boolean;
   lastLatencyMs: number | null;
+  lastCheckedAt: number | null;
   lastError: string | null;
+  activeIncident: StatusEvent | null;
   samples: number;
   uptimePct: number;
   packetLossPct: number;
@@ -88,8 +102,79 @@ export interface TargetHistorySeries {
   id: string;
   host: string;
   label: string;
-  scope: 'gateway' | 'external';
+  scope: TargetScope;
+  type?: TargetType;
+  protocol?: TargetProtocol;
   points: TargetTrendPoint[];
+}
+
+export interface MonitorTarget {
+  id: string;
+  host: string;
+  label: string;
+  scope: TargetScope;
+  type: TargetType;
+  protocol: TargetProtocol;
+  group: string;
+  environment: string;
+  enabled: boolean;
+  intervalMs: number;
+  timeoutMs: number;
+  config: Record<string, unknown>;
+}
+
+export type TargetPayload = Partial<Omit<MonitorTarget, 'id' | 'config'>> & {
+  id?: string;
+  config?: Record<string, unknown>;
+};
+
+export interface TargetsResponse {
+  targets: MonitorTarget[];
+}
+
+export interface TargetResponse {
+  target: MonitorTarget;
+}
+
+export interface CheckResult {
+  id: number;
+  checkedAt: number;
+  targetId: string;
+  host: string;
+  label: string;
+  scope: TargetScope;
+  type: TargetType;
+  protocol: TargetProtocol;
+  ok: boolean;
+  latencyMs: number | null;
+  error: string | null;
+  status: Status;
+  severity: number;
+  durationMs: number | null;
+}
+
+export interface LiveCheckResult {
+  id: string;
+  host: string;
+  label: string;
+  scope: TargetScope;
+  type: TargetType;
+  protocol: TargetProtocol;
+  ok: boolean;
+  latencyMs: number | null;
+  checkedAt: number;
+  durationMs: number | null;
+  error: string | null;
+}
+
+export interface TargetResultsResponse {
+  targetId: string;
+  from: number | null;
+  to: number | null;
+  limit: number;
+  offset: number;
+  total: number;
+  results: CheckResult[];
 }
 
 /** Response from `/api/history`. */
@@ -114,6 +199,25 @@ export interface EventsResponse {
   offset: number;
   total: number;
   events: StatusEvent[];
+}
+
+export interface IncidentWindow {
+  id: number;
+  targetId: string;
+  targetLabel: string;
+  openedAt: number;
+  resolvedAt: number | null;
+  status: 'open' | 'resolved';
+  message: string;
+}
+
+export interface IncidentsResponse {
+  from: number | null;
+  to: number | null;
+  limit: number;
+  offset: number;
+  total: number;
+  incidents: IncidentWindow[];
 }
 
 /** One persisted active speed-test attempt. */
@@ -230,4 +334,5 @@ export interface StorageClearResponse {
 export type StreamPayload =
   | { type: 'status'; summary: StatusSummary }
   | { type: 'event'; event: StatusEvent }
+  | { type: 'targets'; targets: MonitorTarget[] }
   | { type: 'speedTest'; test: SpeedTestResult };

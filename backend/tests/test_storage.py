@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from netbox.models import MonitorConfig
+from netbox.models import MonitorConfig, Target
 from netbox.storage import StatusStore
 
 
@@ -43,6 +43,45 @@ def sample(checked_at: int, ok: bool, latency_ms: float | None) -> dict[str, obj
     }
 
 
+def https_sample(checked_at: int, latency_ms: float) -> dict[str, object]:
+    return {
+        "checkedAt": checked_at,
+        "results": [
+            {
+                "id": "jobbox-website",
+                "host": "getjobbox.com",
+                "label": "Jobbox",
+                "scope": "external",
+                "type": "website",
+                "protocol": "https",
+                "ok": True,
+                "latencyMs": latency_ms,
+                "checkedAt": checked_at,
+                "durationMs": latency_ms,
+                "error": None,
+            }
+        ],
+    }
+
+
+def test_status_store_classifies_https_latency_as_operational(tmp_path: Path) -> None:
+    db_path = tmp_path / "status.sqlite3"
+    store = StatusStore(db_path)
+    monitor_config = config(db_path)
+
+    try:
+        store.record_sample(https_sample(1_000, 2_500), monitor_config)
+        row = store.connection.execute(
+            "SELECT status FROM check_results WHERE target_id = ?",
+            ("jobbox-website",),
+        ).fetchone()
+    finally:
+        store.close()
+
+    assert row is not None
+    assert row[0] == "operational"
+
+
 def test_status_store_creates_database_when_missing(tmp_path: Path) -> None:
     db_path = tmp_path / "nested" / "netbox.sqlite3"
     assert not db_path.exists()
@@ -59,6 +98,9 @@ def test_status_store_creates_database_when_missing(tmp_path: Path) -> None:
             ).fetchall()
         }
         assert "ping_results" in tables
+        assert "monitor_targets" in tables
+        assert "check_results" in tables
+        assert "incidents" in tables
         assert "status_events" in tables
         assert "speed_tests" in tables
         assert "ui_preferences" in tables
@@ -124,6 +166,8 @@ def test_status_store_returns_per_target_history(tmp_path: Path) -> None:
             "host": "127.0.0.1",
             "label": "Loopback",
             "scope": "gateway",
+            "type": "host",
+            "protocol": "icmp",
             "points": [
                 {
                     "at": 1000,
@@ -144,6 +188,83 @@ def test_status_store_returns_per_target_history(tmp_path: Path) -> None:
             ],
         }
     ]
+
+
+def test_status_store_seeds_and_cruds_targets(tmp_path: Path) -> None:
+    db_path = tmp_path / "status.sqlite3"
+    store = StatusStore(db_path)
+
+    try:
+        store.seed_targets([Target("gateway", "127.0.0.1", "Loopback", "gateway")])
+        created = store.create_target(
+            {
+                "label": "Example API",
+                "protocol": "http",
+                "type": "api",
+                "scope": "external",
+                "config": {"url": "https://example.com/health", "expectedStatus": 204},
+            }
+        )
+        updated = store.update_target(created.id, {"enabled": False, "group": "Production"})
+        deleted = store.delete_target(created.id)
+        targets = store.list_targets()
+    finally:
+        store.close()
+
+    assert targets[0].id == "gateway"
+    assert created.protocol == "http"
+    assert updated.enabled is False
+    assert updated.group == "Production"
+    assert deleted is True
+
+
+def test_status_store_returns_target_results(tmp_path: Path) -> None:
+    db_path = tmp_path / "status.sqlite3"
+    store = StatusStore(db_path)
+    monitor_config = config(db_path)
+
+    try:
+        store.record_sample(sample(1_000, True, 10), monitor_config)
+        store.record_sample(sample(2_000, False, None), monitor_config)
+        results = store.target_results("gateway", limit=10)
+    finally:
+        store.close()
+
+    assert results["total"] == 2
+    assert results["results"][0]["checkedAt"] == 2_000
+    assert results["results"][0]["status"] == "down"
+
+
+def test_status_store_opens_and_resolves_incidents(tmp_path: Path) -> None:
+    db_path = tmp_path / "status.sqlite3"
+    store = StatusStore(db_path)
+    down_event = {
+        "at": 1_000,
+        "targetId": "gateway",
+        "targetLabel": "Loopback",
+        "from": "operational",
+        "to": "degraded",
+        "message": "Loopback changed from operational to degraded",
+    }
+    up_event = {
+        **down_event,
+        "at": 2_000,
+        "from": "degraded",
+        "to": "operational",
+        "message": "Loopback changed from degraded to operational",
+    }
+
+    try:
+        store.record_incident_events([down_event])
+        open_incidents = store.recent_incidents()
+        store.record_incident_events([up_event])
+        resolved_incidents = store.recent_incidents()
+    finally:
+        store.close()
+
+    assert open_incidents["incidents"][0]["status"] == "open"
+    assert resolved_incidents["incidents"][0]["status"] == "resolved"
+    assert resolved_incidents["incidents"][0]["resolvedAt"] == 2_000
 
 
 def test_status_store_persists_status_events(tmp_path: Path) -> None:

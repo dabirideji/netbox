@@ -10,6 +10,9 @@ from typing import Any
 from netbox.models import MonitorConfig, NetworkIdentity, Status, Target
 from netbox.timeutils import now_ms
 
+HTTPS_LATENCY_WARN_MS = 3_000.0
+REACHABILITY_PROTOCOLS = frozenset({"http", "https", "tcp"})
+
 
 def summarize(
     samples: list[dict[str, Any]],
@@ -31,11 +34,25 @@ def summarize(
         latencies = [result["latencyMs"] for result in successful if result["latencyMs"] is not None]
         recent = results[-1] if results else None
         recent_window = results[-config.recent_window :]
+        reachability = is_reachability_check(target)
+        latency_warn_ms = None if reachability else latency_warn_ms_for(target, config)
         recent_failures = len([result for result in recent_window if not result["ok"]])
-        recent_high_latency = len(
-            [result for result in recent_window if result["ok"] and result["latencyMs"] >= config.latency_warn_ms]
+        recent_high_latency = 0 if reachability else len(
+            [
+                result
+                for result in recent_window
+                if result["ok"]
+                and result["latencyMs"] is not None
+                and result["latencyMs"] >= latency_warn_ms_for(target, config)
+            ]
         )
-        current_status = get_current_status(recent, recent_failures, recent_high_latency, config)
+        current_status = get_current_status(
+            recent,
+            recent_failures,
+            recent_high_latency,
+            config,
+            target,
+        )
 
         target_summaries.append(
             {
@@ -43,10 +60,22 @@ def summarize(
                 "host": target.host,
                 "label": target.label,
                 "scope": target.scope,
+                "type": target.type,
+                "protocol": target.protocol,
+                "group": target.group,
+                "environment": target.environment,
+                "enabled": target.enabled,
+                "intervalMs": target.interval_ms,
+                "timeoutMs": target.timeout_ms,
+                "latencyWarnMs": None if reachability else latency_warn_ms,
+                "reachabilityOnly": reachability,
+                "config": target.config,
                 "currentStatus": current_status,
                 "lastOk": bool(recent and recent["ok"]),
                 "lastLatencyMs": recent["latencyMs"] if recent else None,
+                "lastCheckedAt": recent["checkedAt"] if recent else None,
                 "lastError": recent["error"] if recent else None,
+                "activeIncident": active_incident_for(target.id, events),
                 "samples": len(results),
                 "uptimePct": pct(len(successful), len(results)),
                 "packetLossPct": pct(failed, len(results)),
@@ -56,7 +85,7 @@ def summarize(
                 "jitterMs": jitter(latencies),
                 "recentFailures": recent_failures,
                 "recentHighLatency": recent_high_latency,
-                "history": build_history(results, config),
+                "history": build_history(results, target, config),
             }
         )
 
@@ -90,7 +119,8 @@ def diagnose(target_summaries: list[dict[str, Any]]) -> tuple[Status, str]:
     gateway = next((target for target in target_summaries if target["scope"] == "gateway"), None)
     externals = [target for target in target_summaries if target["scope"] == "external"]
     external_down = bool(externals) and all(target["currentStatus"] == "down" for target in externals)
-    external_degraded = any(target["currentStatus"] != "operational" for target in externals)
+    external_has_down = any(target["currentStatus"] == "down" for target in externals)
+    external_degraded = any(target["currentStatus"] == "degraded" for target in externals)
     gateway_down = bool(gateway and gateway["currentStatus"] == "down")
     gateway_degraded = bool(gateway and gateway["currentStatus"] != "operational")
 
@@ -100,6 +130,8 @@ def diagnose(target_summaries: list[dict[str, Any]]) -> tuple[Status, str]:
         return "degraded", "Local gateway is degraded. Watch router/Wi‑Fi latency or packet loss."
     if external_down:
         return "down", "Gateway is reachable, but internet targets are down. ISP/upstream may be unstable."
+    if external_has_down:
+        return "down", "Gateway is healthy, but one or more internet targets are unreachable."
     if external_degraded:
         return "degraded", "Gateway is healthy, but external targets are degraded. Likely upstream/ISP jitter."
     return "operational", "Local network looks steady."
@@ -110,11 +142,16 @@ def get_current_status(
     recent_failures: int,
     recent_high_latency: int,
     config: MonitorConfig,
+    target: Target,
 ) -> Status:
     """Convert recent failures/high-latency counts into a target status."""
 
     if not recent:
         return "unknown"
+    if is_reachability_check(target):
+        if recent_failures >= config.failures_to_down:
+            return "down"
+        return "operational" if recent["ok"] else "down"
     if recent_failures >= config.failures_to_down:
         return "down"
     if recent_failures >= config.failures_to_degrade:
@@ -124,14 +161,15 @@ def get_current_status(
     return "operational" if recent["ok"] else "degraded"
 
 
-def build_history(results: list[dict[str, Any]], config: MonitorConfig) -> list[dict[str, Any]]:
+def build_history(results: list[dict[str, Any]], target: Target, config: MonitorConfig) -> list[dict[str, Any]]:
     """Build the compact in-memory status history shown beside each target."""
 
+    latency_warn_ms = latency_warn_ms_for(target, config)
     recent_results = results[-config.history_points :]
     return [
         {
             "at": result["checkedAt"],
-            "status": status_for_result(result, config),
+            "status": status_for_result(result, latency_warn_ms, target),
             "latencyMs": result["latencyMs"],
             "error": result["error"],
         }
@@ -139,14 +177,33 @@ def build_history(results: list[dict[str, Any]], config: MonitorConfig) -> list[
     ]
 
 
-def status_for_result(result: dict[str, Any], config: MonitorConfig) -> Status:
-    """Classify a single ping result using latency and success thresholds."""
+def status_for_result(result: dict[str, Any], latency_warn_ms: float, target: Target) -> Status:
+    """Classify a single check result using success and optional latency thresholds."""
 
     if not result["ok"]:
         return "down"
-    if result["latencyMs"] is not None and result["latencyMs"] >= config.latency_warn_ms:
+    if is_reachability_check(target):
+        return "operational"
+    if result["latencyMs"] is not None and result["latencyMs"] >= latency_warn_ms:
         return "degraded"
     return "operational"
+
+
+def is_reachability_check(target: Target) -> bool:
+    """Return True when a target should only be up or down, never latency-degraded."""
+
+    return target.protocol in REACHABILITY_PROTOCOLS
+
+
+def latency_warn_ms_for(target: Target, config: MonitorConfig) -> float:
+    """Return the latency threshold used to classify one target as degraded."""
+
+    raw = target.config.get("latencyWarnMs")
+    if raw is not None:
+        return float(raw)
+    if target.protocol in {"http", "https"}:
+        return HTTPS_LATENCY_WARN_MS
+    return config.latency_warn_ms
 
 
 def capture_events(
@@ -185,6 +242,18 @@ def find_result(results: list[dict[str, Any]], target_id: str) -> dict[str, Any]
     """Return the result for one target from a sample result list."""
 
     return next((result for result in results if result["id"] == target_id), None)
+
+
+def active_incident_for(target_id: str, events: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Return the latest unresolved in-memory incident event for one target."""
+
+    for event in reversed(events):
+        if event["targetId"] != target_id:
+            continue
+        if event["to"] == "operational":
+            return None
+        return event
+    return None
 
 
 def average(values: list[float]) -> float | None:

@@ -1,8 +1,18 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from 'vue';
 import { PhCaretDown, PhCaretUp, PhFrameCorners } from '@phosphor-icons/vue';
+import { AnimatePresence, motion } from 'motion-v';
 import type { DashboardSectionId } from '../../dashboardSections';
 import { useDashboardSectionsCollapsed } from '../../composables/useDashboardSectionsCollapsed';
+import {
+  sectionCardEntranceAnimate,
+  sectionCardEntranceInitial,
+  sectionContentEnterAnimate,
+  sectionContentEnterInitial,
+  sectionContentExitAnimate,
+  sectionContentVisible,
+  sectionLayoutTransition,
+} from '../../motion/sectionAnimations';
 import { SectionModal } from '../ui/section-modal';
 
 const props = withDefaults(
@@ -22,6 +32,7 @@ const props = withDefaults(
 const { isSectionCollapsed, setSectionCollapsed } = useDashboardSectionsCollapsed();
 const collapsed = computed(() => props.collapsible && isSectionCollapsed(props.sectionId));
 const fullscreenOpen = ref(false);
+const shouldAnimateContent = ref(false);
 
 const sectionLabel = computed(() => props.title ?? 'section');
 const expandLabel = computed(() => `Open ${sectionLabel.value} in fullscreen`);
@@ -29,14 +40,20 @@ const collapseLabel = computed(() =>
   collapsed.value ? `Expand ${sectionLabel.value}` : `Collapse ${sectionLabel.value}`,
 );
 const showSectionContent = computed(() => !collapsed.value || fullscreenOpen.value);
+const cardEntranceAnimate = computed(() => sectionCardEntranceAnimate(props.sectionId));
+const contentAnimate = computed(() =>
+  shouldAnimateContent.value ? sectionContentEnterAnimate : sectionContentVisible,
+);
 
 function toggle(): void {
   if (!props.collapsible) return;
+  shouldAnimateContent.value = true;
   setSectionCollapsed(props.sectionId, !collapsed.value);
 }
 
 function openFullscreen(): void {
   if (!props.fullscreen) return;
+  shouldAnimateContent.value = true;
   fullscreenOpen.value = true;
 }
 
@@ -60,7 +77,15 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <section class="dashboard-card" :class="{ 'is-collapsed': collapsible && collapsed, 'is-fullscreen-open': fullscreenOpen }">
+  <motion.section
+    :id="`dashboard-section-${sectionId}`"
+    class="dashboard-card"
+    :class="{ 'is-collapsed': collapsible && collapsed, 'is-fullscreen-open': fullscreenOpen }"
+    layout
+    :transition="sectionLayoutTransition"
+    :initial="sectionCardEntranceInitial"
+    :animate="cardEntranceAnimate"
+  >
     <header class="dashboard-card__header">
       <component
         :is="collapsible ? 'button' : 'div'"
@@ -87,6 +112,7 @@ onUnmounted(() => {
           v-if="fullscreen"
           type="button"
           class="dashboard-card__icon-button"
+          :title="expandLabel"
           :aria-label="expandLabel"
           @click="openFullscreen"
         >
@@ -96,6 +122,7 @@ onUnmounted(() => {
           v-if="collapsible"
           type="button"
           class="dashboard-card__icon-button"
+          :title="collapseLabel"
           :aria-expanded="!collapsed"
           :aria-label="collapseLabel"
           @click="toggle"
@@ -106,17 +133,28 @@ onUnmounted(() => {
       </div>
     </header>
 
-    <div v-show="showSectionContent" class="dashboard-card__content-anchor">
-      <Teleport to="body" :disabled="!fullscreenOpen">
-        <SectionModal
-          :mode="fullscreenOpen ? 'modal' : 'inline'"
-          :eyebrow="eyebrow"
-          :title="title"
-          @close="closeFullscreen"
-        >
-          <slot />
-        </SectionModal>
-      </Teleport>
-    </div>
-  </section>
+    <AnimatePresence mode="sync" :initial="false">
+      <motion.div
+        v-if="showSectionContent"
+        key="section-content"
+        class="dashboard-card__content-anchor"
+        layout
+        :transition="sectionLayoutTransition"
+        :initial="shouldAnimateContent ? sectionContentEnterInitial : false"
+        :animate="contentAnimate"
+        :exit="shouldAnimateContent ? sectionContentExitAnimate : undefined"
+      >
+        <Teleport to="body" :disabled="!fullscreenOpen">
+          <SectionModal
+            :mode="fullscreenOpen ? 'modal' : 'inline'"
+            :eyebrow="eyebrow"
+            :title="title"
+            @close="closeFullscreen"
+          >
+            <slot />
+          </SectionModal>
+        </Teleport>
+      </motion.div>
+    </AnimatePresence>
+  </motion.section>
 </template>

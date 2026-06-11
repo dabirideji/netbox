@@ -8,7 +8,6 @@ import os
 import signal
 import sys
 import threading
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from netbox.config import (
@@ -17,6 +16,7 @@ from netbox.config import (
     env_int,
     env_str,
     load_default_target_args,
+    load_default_target_seeds,
     load_env_files,
     load_json_config,
     load_security_config,
@@ -25,12 +25,13 @@ from netbox.config import (
     nested,
     resolve_project_path,
 )
-from netbox.models import MonitorConfig
+from netbox.models import MonitorConfig, Target
 from netbox.network import build_targets, detect_default_gateway, detect_network_identity
-from netbox.ping import ping_target
+from netbox.scheduler import TargetScheduler
 from netbox.server import StatusHandler, StatusServer
 from netbox.state import MonitorState
 from netbox.storage import StatusStore
+from netbox.targets import repair_api_health_targets, target_from_seed
 from netbox.terminal import print_startup, render_dashboard
 from netbox.timeutils import format_duration, now_ms, parse_duration
 from netbox.validation import validate_bind_host, validate_port
@@ -44,11 +45,67 @@ def main(argv: list[str] | None = None) -> int:
     """Parse CLI arguments and run the monitor process."""
 
     try:
-        config = parse_args(argv)
+        args = list(argv if argv is not None else sys.argv[1:])
+        if args[:1] == ["seed"]:
+            return seed_defaults(parse_args(args[1:]))
+        config = parse_args(args)
         return run(config)
     except ValueError as error:
         print(f"Invalid configuration: {error}", file=sys.stderr)
         return 2
+
+
+def seed_defaults(config: MonitorConfig) -> int:
+    """Insert bundled monitor targets from config when they are not already stored."""
+
+    gateway = detect_default_gateway()
+    seed_targets = build_bundled_seed_targets(config, gateway)
+    if not seed_targets:
+        print("No bundled targets to seed.", file=sys.stderr)
+        return 1
+
+    store = StatusStore(config.db_path, config.storage_config)
+    try:
+        existing = len(store.list_targets())
+        store.seed_targets(seed_targets)
+        store.refresh_configured_seeds(seed_targets)
+        for target in repair_api_health_targets(store.list_targets()):
+            store.update_target(target.id, {"config": target.config, "host": target.host})
+        total = len(store.list_targets())
+        added = max(0, total - existing)
+        print(f"Monitor targets ready ({total} configured, {added} newly added).")
+    finally:
+        store.close()
+
+    return 0
+
+
+def build_bundled_seed_targets(config: MonitorConfig, gateway: str | None) -> list:
+    """Build default targets from config seeds, legacy ICMP defaults, and the local gateway."""
+
+    seed_payloads = [
+        target.to_dict() for target in build_targets(config.target_args, gateway, config.default_target_args)
+    ]
+    if not config.target_args:
+        seed_payloads.extend(config.default_target_seeds)
+    return [target_from_seed(target, config.interval_ms, config.timeout_ms) for target in seed_payloads]
+
+
+def apply_runtime_target_seeds(config: MonitorConfig, store: StatusStore, gateway: str | None) -> None:
+    """Ensure CLI targets and the detected gateway exist without re-inserting bundled examples."""
+
+    if config.target_args:
+        payloads = [target.to_dict() for target in build_targets(config.target_args, gateway, [])]
+    elif gateway:
+        payloads = [Target("gateway", gateway, "Local Gateway", "gateway").to_dict()]
+    else:
+        payloads = []
+
+    if not payloads:
+        return
+
+    runtime_targets = [target_from_seed(target, config.interval_ms, config.timeout_ms) for target in payloads]
+    store.seed_targets(runtime_targets)
 
 
 def run(config: MonitorConfig) -> int:
@@ -57,13 +114,21 @@ def run(config: MonitorConfig) -> int:
     started_at = now_ms()
     gateway = detect_default_gateway()
     network = detect_network_identity(config.wifi_name)
-    targets = build_targets(config.target_args, gateway, config.default_target_args)
-
-    if not targets:
-        print("No targets available. Pass one with --target 192.168.1.1:Router:gateway", file=sys.stderr)
-        return 1
 
     store = StatusStore(config.db_path, config.storage_config)
+    apply_runtime_target_seeds(config, store, gateway)
+    for target in repair_api_health_targets(store.list_targets()):
+        store.update_target(target.id, {"config": target.config, "host": target.host})
+    targets = store.list_targets()
+
+    if not targets:
+        print(
+            "No monitor targets configured. Run `make setup` to seed defaults, "
+            "or pass --target 192.168.1.1:Router:gateway",
+            file=sys.stderr,
+        )
+        store.close()
+        return 1
     state = MonitorState(config, targets, network, started_at, store)
     static_dir = resolve_static_dir(config.static_dir, dev_mode=config.no_clear)
 
@@ -74,7 +139,10 @@ def run(config: MonitorConfig) -> int:
         if error.errno == errno.EADDRINUSE:
             print(f"Port {config.port} is already in use.", file=sys.stderr)
             print(f"Open the existing dashboard at http://localhost:{config.port}", file=sys.stderr)
-            print(f"Or start another monitor with: python3 backend/monitor.py --port {config.port + 1}", file=sys.stderr)
+            print(
+                f"Or start another monitor with: python3 backend/monitor.py --port {config.port + 1}",
+                file=sys.stderr,
+            )
             return 1
         raise
 
@@ -89,18 +157,11 @@ def run(config: MonitorConfig) -> int:
 
         print_startup(config, targets)
         ends_at = started_at + config.duration_ms if config.duration_ms is not None else None
-
-        with ThreadPoolExecutor(max_workers=len(targets)) as executor:
-            while not state.stopping.is_set() and (ends_at is None or now_ms() < ends_at):
-                checked_at = now_ms()
-                futures = [executor.submit(ping_target, target, config.timeout_ms) for target in targets]
-                results = [future.result().to_dict() for future in futures]
-                summary = state.append_sample({"checkedAt": checked_at, "results": results})
-                if not config.no_clear:
-                    render_dashboard(summary, config)
-
-                sleep_ms = max(0, checked_at + config.interval_ms - now_ms())
-                state.stopping.wait(sleep_ms / 1000)
+        scheduler = TargetScheduler(state, max_workers=max(1, min(16, len(targets))))
+        scheduler.run(
+            ends_at,
+            render=None if config.no_clear else lambda summary: render_dashboard(summary, config),
+        )
     finally:
         state.stopping.set()
         server.shutdown()
@@ -252,6 +313,7 @@ def parse_args(argv: list[str] | None = None) -> MonitorConfig:
         db_path=resolve_project_path(args.db_path) or str(DEFAULT_DB_PATH),
         target_args=target_args,
         default_target_args=default_target_args,
+        default_target_seeds=load_default_target_seeds(),
         security_headers={str(key): str(value) for key, value in security_config["headers"].items()},
         speed_config=speed_config,
         storage_config=storage_config,
