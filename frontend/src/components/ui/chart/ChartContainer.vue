@@ -13,8 +13,12 @@ const styles = computed(() => {
     '--vis-donut-background-color': 'transparent',
     '--vis-donut-segment-stroke-color': 'transparent',
     '--vis-donut-segment-stroke-width': '0px',
+    '--vis-donut-central-label-text-color': 'var(--text)',
+    '--vis-donut-central-sub-label-text-color': 'var(--faint)',
     '--vis-nested-donut-background-color': 'transparent',
     '--vis-nested-donut-segment-stroke-color': 'transparent',
+    '--vis-nested-donut-central-label-text-color': 'var(--text)',
+    '--vis-nested-donut-central-sublabel-text-color': 'var(--faint)',
   };
 
   Object.entries(props.config).forEach(([key, value]) => {

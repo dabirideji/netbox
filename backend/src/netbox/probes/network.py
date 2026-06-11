@@ -5,9 +5,10 @@ from __future__ import annotations
 import platform
 import re
 import subprocess
+from typing import Any
 
-from netbox.models import NetworkIdentity, Target
-from netbox.validation import parse_target_arg
+from netbox.core.models import NetworkIdentity, Target
+from netbox.util.validation import parse_target_arg
 
 
 def build_targets(
@@ -68,16 +69,131 @@ def parse_gateway(output: str, system: str) -> str | None:
     return None
 
 
+def network_identity_should_sync(current: NetworkIdentity, detected: NetworkIdentity) -> bool:
+    """Return whether auto-detected network identity should replace the current one."""
+
+    if current.interface != detected.interface:
+        return True
+    if detected.ssid and detected.ssid != current.ssid:
+        return True
+    if detected.ssid and not current.ssid:
+        return True
+    return False
+
+
 def detect_network_identity(override_name: str = "") -> NetworkIdentity:
     """Return the active network identity, preferring an explicit Wi-Fi name."""
 
     system = platform.system().lower()
     interface = detect_default_interface(system)
-    service = detect_interface_service(interface) if interface else None
+    if interface:
+        return detect_network_identity_for_interface(interface, override_name)
+    return NetworkIdentity(name="Unknown network", ssid=None, interface=None, service=None)
+
+
+def detect_network_identity_for_interface(interface: str, override_name: str = "") -> NetworkIdentity:
+    """Return network identity for one interface, preferring an explicit Wi-Fi name."""
+
+    system = platform.system().lower()
+    service = detect_interface_service(interface) if system == "darwin" else _linux_interface_service(interface)
     ssid = clean_network_name(override_name) or detect_ssid(system, interface)
     name = ssid or format_interface_name(service, interface)
-
     return NetworkIdentity(name=name, ssid=ssid, interface=interface, service=service)
+
+
+def list_network_interfaces() -> list[dict[str, Any]]:
+    """List local network interfaces with best-effort SSID detection."""
+
+    system = platform.system().lower()
+    active = detect_default_interface(system)
+    if system == "darwin":
+        return _list_darwin_interfaces(active)
+    if system == "linux":
+        return _list_linux_interfaces(active)
+    return []
+
+
+def _list_darwin_interfaces(active: str | None) -> list[dict[str, Any]]:
+    output = run_text(["networksetup", "-listallhardwareports"])
+    if not output:
+        return []
+
+    options: list[dict[str, Any]] = []
+    current_service: str | None = None
+
+    for line in output.splitlines():
+        if line.startswith("Hardware Port:"):
+            current_service = line.split(":", 1)[1].strip()
+            continue
+        if not line.startswith("Device:"):
+            continue
+
+        interface = line.split(":", 1)[1].strip()
+        if not interface:
+            continue
+
+        identity = detect_network_identity_for_interface(interface)
+        options.append(_interface_option(identity, active))
+
+    return options
+
+
+def _list_linux_interfaces(active: str | None) -> list[dict[str, Any]]:
+    output = run_text(["nmcli", "-t", "-f", "DEVICE,TYPE,STATE", "device", "status"])
+    if not output:
+        return []
+
+    options: list[dict[str, Any]] = []
+    for line in output.splitlines():
+        parts = line.split(":")
+        if len(parts) < 3:
+            continue
+
+        interface = parts[0].strip()
+        device_type = parts[1].strip()
+        state = parts[2].strip()
+        if not interface or device_type == "loopback" or state in {"unmanaged", "unavailable"}:
+            continue
+
+        identity = detect_network_identity_for_interface(interface)
+        service = _linux_interface_service(interface) or device_type
+        options.append(
+            _interface_option(
+                NetworkIdentity(
+                    name=identity.name,
+                    ssid=identity.ssid,
+                    interface=interface,
+                    service=service,
+                ),
+                active,
+            )
+        )
+
+    return options
+
+
+def _linux_interface_service(interface: str) -> str | None:
+    output = run_text(["nmcli", "-t", "-f", "TYPE", "device", "show", interface])
+    if not output:
+        return None
+
+    device_type = output.splitlines()[0].strip()
+    if device_type == "wifi":
+        return "Wi-Fi"
+    if device_type == "ethernet":
+        return "Ethernet"
+    return device_type or None
+
+
+def _interface_option(identity: NetworkIdentity, active: str | None) -> dict[str, Any]:
+    return {
+        "service": identity.service,
+        "interface": identity.interface,
+        "ssid": identity.ssid,
+        "active": identity.interface == active,
+        "label": identity.name,
+        "hidden": wifi_ssid_likely_hidden(identity),
+    }
 
 
 def detect_default_interface(system: str) -> str | None:

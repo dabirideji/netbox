@@ -4,6 +4,7 @@ import { computed, onMounted, onUnmounted, ref, TransitionGroup } from 'vue';
 import { fetchStatus, reorderTargets as reorderTargetsApi, subscribeStatus } from '../api';
 import { useTargetDragReorder } from '../composables/useTargetDragReorder';
 import { formatClock, formatMs } from '../format';
+import { formatTargetLastValue } from '../liveChecks';
 import { targetServiceIcon } from '../targetIcons';
 import { targetColorForSource } from '../targetColors';
 import { reorderTargetsByIds } from '../targetOrder';
@@ -72,10 +73,6 @@ const displayTargets = computed(() =>
 
 function applySummary(payload: StatusSummary): void {
   summary.value = payload;
-}
-
-function lastValue(target: TargetSummary): string {
-  return target.lastLatencyMs == null ? target.lastError ?? 'fail' : formatMs(target.lastLatencyMs);
 }
 
 function toggleCompact(): void {
@@ -206,7 +203,7 @@ onUnmounted(() => {
               <strong>{{ target.label }}</strong>
             </div>
             <span class="tray-row__ip">{{ target.host }}</span>
-            <span class="tray-row__latency tray-row__latency--inline">{{ lastValue(target) }}</span>
+            <span class="tray-row__latency tray-row__latency--inline">{{ formatTargetLastValue(target) }}</span>
             <span class="tray-row__status status" :class="target.currentStatus">
               <span class="dot" />
               <span class="tray-row__status-label">{{ target.currentStatus }}</span>
@@ -226,7 +223,7 @@ onUnmounted(() => {
                 :title="targetBarTitle(target, point)"
               />
             </div>
-            <span class="tray-row__latency">{{ lastValue(target) }}</span>
+            <span class="tray-row__latency">{{ formatTargetLastValue(target) }}</span>
           </div>
       </article>
     </TransitionGroup>

@@ -1,6 +1,6 @@
 """Speed-test policy helpers."""
 
-from netbox.speed import speed_policy
+from netbox.monitor.speed import speed_policy
 
 
 def test_speed_policy_allows_immediate_rerun_when_interval_disabled() -> None:

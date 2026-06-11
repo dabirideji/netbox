@@ -116,6 +116,12 @@ CREATE TABLE IF NOT EXISTS platform_settings (
   updated_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
 );
 
+CREATE TABLE IF NOT EXISTS storage_settings (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  data TEXT NOT NULL DEFAULT '{}',
+  updated_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
+);
+
 CREATE TABLE IF NOT EXISTS ui_preferences (
   id INTEGER PRIMARY KEY CHECK (id = 1),
   data TEXT NOT NULL DEFAULT '{}',

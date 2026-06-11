@@ -4,13 +4,16 @@ import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
 
-const LOCATION_SETTINGS_URL =
-  'x-apple.systempreferences:com.apple.preference.security?Privacy_LocationServices';
+const LOCATION_SETTINGS_URLS = [
+  'x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_LocationServices',
+  'x-apple.systempreferences:com.apple.preference.security?Privacy_LocationServices',
+];
 
 export interface NetworkAccessResult {
   ok: boolean;
   ssid: string | null;
   message: string;
+  needsLocationSettings?: boolean;
 }
 
 async function runText(command: string, args: string[]): Promise<string | null> {
@@ -139,8 +142,17 @@ async function requestMacLocationPermission(): Promise<boolean> {
 }
 
 export async function openMacLocationSettings(): Promise<void> {
-  if (process.platform === 'darwin') {
-    await shell.openExternal(LOCATION_SETTINGS_URL);
+  if (process.platform !== 'darwin') {
+    return;
+  }
+
+  for (const url of LOCATION_SETTINGS_URLS) {
+    try {
+      await shell.openExternal(url);
+      return;
+    } catch {
+      continue;
+    }
   }
 }
 
@@ -155,20 +167,19 @@ export async function requestWifiNetworkAccess(): Promise<NetworkAccessResult> {
 
   let ssid = await detectWifiSsid();
   if (ssid) {
-    return { ok: true, ssid, message: 'Wi-Fi name is already available.' };
+    return { ok: true, ssid, message: ssid };
   }
 
   await requestMacLocationPermission();
   ssid = await detectWifiSsid();
   if (ssid) {
-    return { ok: true, ssid, message: 'Location access granted. Wi-Fi name detected.' };
+    return { ok: true, ssid, message: ssid };
   }
 
-  await openMacLocationSettings();
   return {
     ok: false,
     ssid: null,
-    message:
-      'Enable Location Services for Netbox in System Settings, then click Show Wi-Fi name again.',
+    needsLocationSettings: true,
+    message: 'Still hidden.',
   };
 }

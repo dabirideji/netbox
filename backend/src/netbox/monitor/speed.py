@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from netbox.responses import VALID_SPEED_STATUSES
+from netbox.core.responses import VALID_SPEED_STATUSES
 
 MAX_LABEL_LENGTH = 120
 MAX_ERROR_LENGTH = 240

@@ -6,7 +6,7 @@ import json
 from dataclasses import replace
 from typing import Any
 
-from netbox.models import Target
+from netbox.core.models import Target
 from netbox.storage.rows import target_from_row
 from netbox.targets import normalize_target_payload, target_to_api
 

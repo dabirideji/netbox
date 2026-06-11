@@ -1,0 +1,1635 @@
+openapi: 3.0.3
+info:
+  title: Netbox Monitor API
+  version: 1.0.0
+  description: |
+    Local-first HTTP API served by the Netbox monitor backend.
+
+    Interactive documentation is available at [`/api/docs`](/api/docs).
+    The machine-readable spec lives at [`/api/openapi.yaml`](/api/openapi.yaml).
+
+    Live dashboard updates are also broadcast on the Server-Sent Events stream at `/events`.
+  contact:
+    name: Netbox
+servers:
+  - url: http://127.0.0.1:4177
+    description: Default local development server
+tags:
+  - name: Status
+    description: Current monitor snapshot and live stream
+  - name: History
+    description: Aggregated and per-target trend data
+  - name: Targets
+    description: Monitor target configuration and checks
+  - name: Incidents
+    description: Open and resolved incident windows
+  - name: Events
+    description: Persisted status transition events
+  - name: Speed tests
+    description: Browser-run speed test history and policy
+  - name: Preferences
+    description: Persisted UI preferences
+  - name: Alerts
+    description: SMTP delivery and per-target alert rules
+  - name: Settings
+    description: Platform-wide defaults
+  - name: Storage
+    description: Local database usage and maintenance
+  - name: Network
+    description: Active network identity
+  - name: Wallpaper
+    description: Curated background image proxy
+paths:
+  /api/status:
+    get:
+      tags: [Status]
+      summary: Latest monitor snapshot
+      operationId: getStatus
+      responses:
+        "200":
+          description: Current dashboard snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusSummary"
+  /events:
+    get:
+      tags: [Status]
+      summary: Live status stream
+      description: Server-Sent Events stream emitting status, target, incident, speed-test, and alert payloads.
+      operationId: streamEvents
+      responses:
+        "200":
+          description: Event stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+  /api/history:
+    get:
+      tags: [History]
+      summary: Overview history
+      operationId: getHistory
+      parameters:
+        - $ref: "#/components/parameters/points"
+        - $ref: "#/components/parameters/from"
+        - $ref: "#/components/parameters/to"
+      responses:
+        "200":
+          description: Aggregated severity points
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HistoryResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /api/targets/history:
+    get:
+      tags: [History]
+      summary: Per-target history
+      operationId: getTargetHistory
+      parameters:
+        - $ref: "#/components/parameters/points"
+        - $ref: "#/components/parameters/from"
+        - $ref: "#/components/parameters/to"
+      responses:
+        "200":
+          description: Target trend series
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TargetHistoryResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /api/targets:
+    get:
+      tags: [Targets]
+      summary: List targets
+      operationId: listTargets
+      responses:
+        "200":
+          description: Configured targets
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TargetsResponse"
+    post:
+      tags: [Targets]
+      summary: Create target
+      operationId: createTarget
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TargetPayload"
+      responses:
+        "201":
+          description: Created target
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TargetResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /api/targets/order:
+    patch:
+      tags: [Targets]
+      summary: Reorder targets
+      operationId: reorderTargets
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [order]
+              properties:
+                order:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        "200":
+          description: Updated target list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TargetsResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /api/targets/preview-check:
+    post:
+      tags: [Targets]
+      summary: Preview one unsaved target check
+      operationId: previewTargetCheck
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TargetPayload"
+      responses:
+        "200":
+          description: Preview result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TargetPreviewCheckResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /api/targets/{targetId}:
+    parameters:
+      - $ref: "#/components/parameters/targetId"
+    get:
+      tags: [Targets]
+      summary: Get one target
+      operationId: getTarget
+      responses:
+        "200":
+          description: Target details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TargetResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [Targets]
+      summary: Update one target
+      operationId: updateTarget
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TargetPayload"
+      responses:
+        "200":
+          description: Updated target
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TargetResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Targets]
+      summary: Delete one target
+      operationId: deleteTarget
+      responses:
+        "200":
+          description: Deletion result
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [deleted]
+                properties:
+                  deleted:
+                    type: boolean
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/targets/{targetId}/results:
+    parameters:
+      - $ref: "#/components/parameters/targetId"
+    get:
+      tags: [Targets]
+      summary: Raw check results for one target
+      operationId: getTargetResults
+      parameters:
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
+        - $ref: "#/components/parameters/from"
+        - $ref: "#/components/parameters/to"
+      responses:
+        "200":
+          description: Paginated check results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TargetResultsResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/targets/{targetId}/check-now:
+    parameters:
+      - $ref: "#/components/parameters/targetId"
+    post:
+      tags: [Targets]
+      summary: Run one immediate check
+      operationId: checkTargetNow
+      responses:
+        "202":
+          description: Check accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [result, summary]
+                properties:
+                  result:
+                    $ref: "#/components/schemas/LiveCheckResult"
+                  summary:
+                    $ref: "#/components/schemas/StatusSummary"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/targets/{targetId}/alert:
+    parameters:
+      - $ref: "#/components/parameters/targetId"
+    get:
+      tags: [Alerts]
+      summary: Get target alert rules
+      operationId: getTargetAlert
+      responses:
+        "200":
+          description: Alert rules
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TargetAlertResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [Alerts]
+      summary: Update target alert rules
+      operationId: updateTargetAlert
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TargetAlertRules"
+      responses:
+        "200":
+          description: Updated alert rules
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TargetAlertResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/targets/{targetId}/favorite:
+    parameters:
+      - $ref: "#/components/parameters/targetId"
+    patch:
+      tags: [Targets]
+      summary: Pin or unpin a target
+      operationId: setTargetFavorite
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [favorite]
+              properties:
+                favorite:
+                  type: boolean
+      responses:
+        "200":
+          description: Updated target
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TargetResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/incidents:
+    get:
+      tags: [Incidents]
+      summary: List incident windows
+      operationId: listIncidents
+      parameters:
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
+        - $ref: "#/components/parameters/from"
+        - $ref: "#/components/parameters/to"
+      responses:
+        "200":
+          description: Paginated incidents
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IncidentsResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /api/events:
+    get:
+      tags: [Events]
+      summary: List persisted status events
+      operationId: listEvents
+      parameters:
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
+        - $ref: "#/components/parameters/from"
+        - $ref: "#/components/parameters/to"
+      responses:
+        "200":
+          description: Paginated events
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventsResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /api/speed-tests:
+    get:
+      tags: [Speed tests]
+      summary: List speed tests
+      operationId: listSpeedTests
+      parameters:
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
+        - $ref: "#/components/parameters/from"
+        - $ref: "#/components/parameters/to"
+      responses:
+        "200":
+          description: Speed test history and policy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SpeedTestsResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+    post:
+      tags: [Speed tests]
+      summary: Record a browser-run speed test
+      operationId: recordSpeedTest
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SpeedTestRecordPayload"
+      responses:
+        "201":
+          description: Stored speed test
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [test, policy]
+                properties:
+                  test:
+                    $ref: "#/components/schemas/SpeedTestResult"
+                  policy:
+                    $ref: "#/components/schemas/SpeedTestPolicy"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /api/preferences:
+    get:
+      tags: [Preferences]
+      summary: Get UI preferences
+      operationId: getPreferences
+      responses:
+        "200":
+          description: Persisted preferences
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PreferencesResponse"
+    patch:
+      tags: [Preferences]
+      summary: Merge UI preferences
+      operationId: updatePreferences
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: Updated preferences
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PreferencesResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /api/alerts/smtp:
+    get:
+      tags: [Alerts]
+      summary: Get SMTP settings
+      operationId: getSmtpSettings
+      responses:
+        "200":
+          description: SMTP provider configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SmtpSettingsResponse"
+    patch:
+      tags: [Alerts]
+      summary: Update SMTP settings
+      operationId: updateSmtpSettings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: Updated SMTP settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SmtpSettingsResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /api/alerts/smtp/test:
+    post:
+      tags: [Alerts]
+      summary: Send a test email
+      operationId: testSmtpSettings
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: SMTP test result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SmtpTestResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /api/settings/platform:
+    get:
+      tags: [Settings]
+      summary: Get platform settings
+      operationId: getPlatformSettings
+      responses:
+        "200":
+          description: Platform-wide defaults
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlatformSettingsResponse"
+    patch:
+      tags: [Settings]
+      summary: Update platform settings
+      operationId: updatePlatformSettings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PlatformSettings"
+      responses:
+        "200":
+          description: Updated platform settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlatformSettingsResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /api/storage:
+    get:
+      tags: [Storage]
+      summary: Storage usage and limits
+      operationId: getStorageStats
+      responses:
+        "200":
+          description: Storage statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StorageStats"
+  /api/storage/clear:
+    post:
+      tags: [Storage]
+      summary: Clear one storage scope
+      operationId: clearStorage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [scope]
+              properties:
+                scope:
+                  type: string
+                  enum: [incidents, ping, speedTests, all]
+      responses:
+        "200":
+          description: Clear result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StorageClearResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /api/network/refresh:
+    post:
+      tags: [Network]
+      summary: Refresh active network identity
+      operationId: refreshNetworkIdentity
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                wifiName:
+                  type: string
+                  nullable: true
+      responses:
+        "200":
+          description: Updated network identity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NetworkRefreshResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /api/wallpaper:
+    get:
+      tags: [Wallpaper]
+      summary: Fetch curated wallpaper metadata
+      operationId: getWallpaper
+      responses:
+        "200":
+          description: Wallpaper image metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WallpaperResponse"
+  /api/openapi.yaml:
+    get:
+      tags: [Status]
+      summary: OpenAPI specification
+      operationId: getOpenApiSpec
+      responses:
+        "200":
+          description: OpenAPI 3 document
+          content:
+            application/yaml:
+              schema:
+                type: string
+  /api/docs:
+    get:
+      tags: [Status]
+      summary: Swagger UI
+      operationId: getApiDocs
+      responses:
+        "200":
+          description: Interactive API documentation
+          content:
+            text/html:
+              schema:
+                type: string
+components:
+  parameters:
+    targetId:
+      name: targetId
+      in: path
+      required: true
+      schema:
+        type: string
+    points:
+      name: points
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 2000
+        default: 360
+    limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 500
+        default: 50
+    offset:
+      name: offset
+      in: query
+      schema:
+        type: integer
+        minimum: 0
+        maximum: 100000
+        default: 0
+    from:
+      name: from
+      in: query
+      description: Inclusive start timestamp in epoch milliseconds.
+      schema:
+        type: integer
+        minimum: 0
+    to:
+      name: to
+      in: query
+      description: Inclusive end timestamp in epoch milliseconds.
+      schema:
+        type: integer
+        minimum: 0
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+  schemas:
+    ApiError:
+      type: object
+      required: [code, error]
+      properties:
+        code:
+          type: string
+        error:
+          type: string
+    Status:
+      type: integer
+      enum: [0, 1, 2, 3]
+      description: "0=up, 1=degraded, 2=down, 3=unknown"
+    NetworkIdentity:
+      type: object
+      required: [name, ssid, interface, service]
+      properties:
+        name:
+          type: string
+        ssid:
+          type: string
+          nullable: true
+        interface:
+          type: string
+          nullable: true
+        service:
+          type: string
+          nullable: true
+    StatusEvent:
+      type: object
+      required: [at, targetId, targetLabel, from, to, message]
+      properties:
+        at:
+          type: integer
+        targetId:
+          type: string
+        targetLabel:
+          type: string
+        from:
+          $ref: "#/components/schemas/Status"
+        to:
+          $ref: "#/components/schemas/Status"
+        message:
+          type: string
+    TargetHistoryPoint:
+      type: object
+      required: [at, status, latencyMs, error]
+      properties:
+        at:
+          type: integer
+        status:
+          $ref: "#/components/schemas/Status"
+        latencyMs:
+          type: number
+          nullable: true
+        error:
+          type: string
+          nullable: true
+    TargetSummary:
+      type: object
+      required:
+        - id
+        - host
+        - label
+        - scope
+        - type
+        - protocol
+        - group
+        - environment
+        - enabled
+        - intervalMs
+        - timeoutMs
+        - config
+        - currentStatus
+        - lastOk
+        - lastLatencyMs
+        - lastCheckedAt
+        - lastError
+        - activeIncident
+        - samples
+        - uptimePct
+        - packetLossPct
+        - avgLatencyMs
+        - minLatencyMs
+        - maxLatencyMs
+        - jitterMs
+        - recentFailures
+        - recentHighLatency
+        - history
+      properties:
+        id:
+          type: string
+        host:
+          type: string
+        label:
+          type: string
+        scope:
+          type: string
+          enum: [gateway, external]
+        type:
+          type: string
+          enum: [website, api, host, port, dns]
+        protocol:
+          type: string
+          enum: [http, https, tcp, icmp, dns]
+        group:
+          type: string
+        environment:
+          type: string
+        enabled:
+          type: boolean
+        isFavorite:
+          type: boolean
+        intervalMs:
+          type: integer
+        timeoutMs:
+          type: integer
+        config:
+          type: object
+          additionalProperties: true
+        currentStatus:
+          $ref: "#/components/schemas/Status"
+        lastOk:
+          type: boolean
+        lastLatencyMs:
+          type: number
+          nullable: true
+        lastCheckedAt:
+          type: integer
+          nullable: true
+        lastError:
+          type: string
+          nullable: true
+        activeIncident:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/StatusEvent"
+        samples:
+          type: integer
+        uptimePct:
+          type: number
+        packetLossPct:
+          type: number
+        avgLatencyMs:
+          type: number
+          nullable: true
+        minLatencyMs:
+          type: number
+          nullable: true
+        maxLatencyMs:
+          type: number
+          nullable: true
+        jitterMs:
+          type: number
+          nullable: true
+        recentFailures:
+          type: integer
+        recentHighLatency:
+          type: integer
+        history:
+          type: array
+          items:
+            $ref: "#/components/schemas/TargetHistoryPoint"
+    StatusSummary:
+      type: object
+      required:
+        - startedAt
+        - now
+        - endsAt
+        - intervalMs
+        - durationMs
+        - overallStatus
+        - diagnosis
+        - network
+        - targets
+        - events
+        - sampleCount
+      properties:
+        startedAt:
+          type: integer
+        now:
+          type: integer
+        endsAt:
+          type: integer
+          nullable: true
+        intervalMs:
+          type: integer
+        durationMs:
+          type: integer
+          nullable: true
+        overallStatus:
+          $ref: "#/components/schemas/Status"
+        diagnosis:
+          type: string
+        network:
+          $ref: "#/components/schemas/NetworkIdentity"
+        targets:
+          type: array
+          items:
+            $ref: "#/components/schemas/TargetSummary"
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/StatusEvent"
+        sampleCount:
+          type: integer
+    HistoryPoint:
+      type: object
+      required: [at, severity, avgLatencyMs, failurePct]
+      properties:
+        at:
+          type: integer
+        severity:
+          type: number
+        avgLatencyMs:
+          type: number
+          nullable: true
+        failurePct:
+          type: number
+    HistoryResponse:
+      type: object
+      required: [from, to, points]
+      properties:
+        from:
+          type: integer
+          nullable: true
+        to:
+          type: integer
+          nullable: true
+        points:
+          type: array
+          items:
+            $ref: "#/components/schemas/HistoryPoint"
+    TargetTrendPoint:
+      type: object
+      required: [at, severity, status, ok, latencyMs, error]
+      properties:
+        at:
+          type: integer
+        severity:
+          type: number
+        status:
+          $ref: "#/components/schemas/Status"
+        ok:
+          type: boolean
+        latencyMs:
+          type: number
+          nullable: true
+        error:
+          type: string
+          nullable: true
+    TargetHistorySeries:
+      type: object
+      required: [id, host, label, scope, points]
+      properties:
+        id:
+          type: string
+        host:
+          type: string
+        label:
+          type: string
+        scope:
+          type: string
+        type:
+          type: string
+        protocol:
+          type: string
+        points:
+          type: array
+          items:
+            $ref: "#/components/schemas/TargetTrendPoint"
+    TargetHistoryResponse:
+      type: object
+      required: [from, to, targets]
+      properties:
+        from:
+          type: integer
+          nullable: true
+        to:
+          type: integer
+          nullable: true
+        targets:
+          type: array
+          items:
+            $ref: "#/components/schemas/TargetHistorySeries"
+    MonitorTarget:
+      type: object
+      required:
+        - id
+        - host
+        - label
+        - scope
+        - type
+        - protocol
+        - group
+        - environment
+        - enabled
+        - intervalMs
+        - timeoutMs
+        - config
+      properties:
+        id:
+          type: string
+        host:
+          type: string
+        label:
+          type: string
+        scope:
+          type: string
+          enum: [gateway, external]
+        type:
+          type: string
+          enum: [website, api, host, port, dns]
+        protocol:
+          type: string
+          enum: [http, https, tcp, icmp, dns]
+        group:
+          type: string
+        environment:
+          type: string
+        enabled:
+          type: boolean
+        isFavorite:
+          type: boolean
+        intervalMs:
+          type: integer
+        timeoutMs:
+          type: integer
+        config:
+          type: object
+          additionalProperties: true
+        sortOrder:
+          type: integer
+    TargetPayload:
+      type: object
+      properties:
+        id:
+          type: string
+        host:
+          type: string
+        label:
+          type: string
+        scope:
+          type: string
+        type:
+          type: string
+        protocol:
+          type: string
+        group:
+          type: string
+        environment:
+          type: string
+        enabled:
+          type: boolean
+        intervalMs:
+          type: integer
+        timeoutMs:
+          type: integer
+        config:
+          type: object
+          additionalProperties: true
+    TargetsResponse:
+      type: object
+      required: [targets]
+      properties:
+        targets:
+          type: array
+          items:
+            $ref: "#/components/schemas/MonitorTarget"
+    TargetResponse:
+      type: object
+      required: [target]
+      properties:
+        target:
+          $ref: "#/components/schemas/MonitorTarget"
+    LiveCheckResult:
+      type: object
+      required: [id, host, label, scope, type, protocol, ok, latencyMs, checkedAt, durationMs, error]
+      properties:
+        id:
+          type: string
+        host:
+          type: string
+        label:
+          type: string
+        scope:
+          type: string
+        type:
+          type: string
+        protocol:
+          type: string
+        ok:
+          type: boolean
+        latencyMs:
+          type: number
+          nullable: true
+        checkedAt:
+          type: integer
+        durationMs:
+          type: integer
+          nullable: true
+        error:
+          type: string
+          nullable: true
+    TargetPreviewCheckResponse:
+      type: object
+      required: [preview, result, status, severity]
+      properties:
+        preview:
+          type: boolean
+          enum: [true]
+        result:
+          $ref: "#/components/schemas/LiveCheckResult"
+        status:
+          $ref: "#/components/schemas/Status"
+        severity:
+          type: number
+    CheckResult:
+      type: object
+      required:
+        - id
+        - checkedAt
+        - targetId
+        - host
+        - label
+        - scope
+        - type
+        - protocol
+        - ok
+        - latencyMs
+        - error
+        - status
+        - severity
+        - durationMs
+      properties:
+        id:
+          type: integer
+        checkedAt:
+          type: integer
+        targetId:
+          type: string
+        host:
+          type: string
+        label:
+          type: string
+        scope:
+          type: string
+        type:
+          type: string
+        protocol:
+          type: string
+        ok:
+          type: boolean
+        latencyMs:
+          type: number
+          nullable: true
+        error:
+          type: string
+          nullable: true
+        status:
+          $ref: "#/components/schemas/Status"
+        severity:
+          type: number
+        durationMs:
+          type: integer
+          nullable: true
+    TargetResultsResponse:
+      type: object
+      required: [targetId, from, to, limit, offset, total, results]
+      properties:
+        targetId:
+          type: string
+        from:
+          type: integer
+          nullable: true
+        to:
+          type: integer
+          nullable: true
+        limit:
+          type: integer
+        offset:
+          type: integer
+        total:
+          type: integer
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/CheckResult"
+    IncidentWindow:
+      type: object
+      required: [id, targetId, targetLabel, openedAt, resolvedAt, status, message]
+      properties:
+        id:
+          type: integer
+        targetId:
+          type: string
+        targetLabel:
+          type: string
+        openedAt:
+          type: integer
+        resolvedAt:
+          type: integer
+          nullable: true
+        status:
+          type: string
+        message:
+          type: string
+    IncidentsResponse:
+      type: object
+      required: [from, to, limit, offset, total, incidents]
+      properties:
+        from:
+          type: integer
+          nullable: true
+        to:
+          type: integer
+          nullable: true
+        limit:
+          type: integer
+        offset:
+          type: integer
+        total:
+          type: integer
+        incidents:
+          type: array
+          items:
+            $ref: "#/components/schemas/IncidentWindow"
+    EventsResponse:
+      type: object
+      required: [from, to, limit, offset, total, events]
+      properties:
+        from:
+          type: integer
+          nullable: true
+        to:
+          type: integer
+          nullable: true
+        limit:
+          type: integer
+        offset:
+          type: integer
+        total:
+          type: integer
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/StatusEvent"
+    SpeedTestResult:
+      type: object
+      required:
+        - id
+        - testedAt
+        - provider
+        - status
+        - downloadMbps
+        - uploadMbps
+        - latencyMs
+        - jitterMs
+        - packetLossPct
+        - retransmissionPct
+        - durationMs
+        - serverName
+        - serverLocation
+        - serverHost
+        - error
+      properties:
+        id:
+          type: integer
+        testedAt:
+          type: integer
+        provider:
+          type: string
+        status:
+          type: string
+        downloadMbps:
+          type: number
+          nullable: true
+        uploadMbps:
+          type: number
+          nullable: true
+        latencyMs:
+          type: number
+          nullable: true
+        jitterMs:
+          type: number
+          nullable: true
+        packetLossPct:
+          type: number
+          nullable: true
+        retransmissionPct:
+          type: number
+          nullable: true
+        durationMs:
+          type: integer
+          nullable: true
+        serverName:
+          type: string
+          nullable: true
+        serverLocation:
+          type: string
+          nullable: true
+        serverHost:
+          type: string
+          nullable: true
+        error:
+          type: string
+          nullable: true
+    SpeedTestPolicy:
+      type: object
+      required:
+        - enabled
+        - provider
+        - providerName
+        - privacyUrl
+        - dataPolicyUrl
+        - metadata
+        - minIntervalMs
+        - dailyRunLimit
+        - runsLast24h
+        - lastTestedAt
+        - nextRunAt
+        - canRun
+      properties:
+        enabled:
+          type: boolean
+        provider:
+          type: string
+        providerName:
+          type: string
+        privacyUrl:
+          type: string
+        dataPolicyUrl:
+          type: string
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+        minIntervalMs:
+          type: integer
+        dailyRunLimit:
+          type: integer
+        runsLast24h:
+          type: integer
+        lastTestedAt:
+          type: integer
+          nullable: true
+        nextRunAt:
+          type: integer
+          nullable: true
+        canRun:
+          type: boolean
+    SpeedTestStats:
+      type: object
+      required: [avgDownloadMbps, avgUploadMbps, minLatencyMs, totalRuns, completedRuns]
+      properties:
+        avgDownloadMbps:
+          type: number
+          nullable: true
+        avgUploadMbps:
+          type: number
+          nullable: true
+        minLatencyMs:
+          type: number
+          nullable: true
+        totalRuns:
+          type: integer
+        completedRuns:
+          type: integer
+    SpeedTestsResponse:
+      type: object
+      required: [from, to, limit, offset, total, stats, policy, tests]
+      properties:
+        from:
+          type: integer
+          nullable: true
+        to:
+          type: integer
+          nullable: true
+        limit:
+          type: integer
+        offset:
+          type: integer
+        total:
+          type: integer
+        stats:
+          $ref: "#/components/schemas/SpeedTestStats"
+        policy:
+          $ref: "#/components/schemas/SpeedTestPolicy"
+        tests:
+          type: array
+          items:
+            $ref: "#/components/schemas/SpeedTestResult"
+    SpeedTestRecordPayload:
+      type: object
+      required:
+        - testedAt
+        - provider
+        - status
+        - downloadMbps
+        - uploadMbps
+        - latencyMs
+        - jitterMs
+        - packetLossPct
+        - retransmissionPct
+        - durationMs
+        - serverName
+        - serverLocation
+        - serverHost
+        - error
+      properties:
+        testedAt:
+          type: integer
+        provider:
+          type: string
+        status:
+          type: string
+        downloadMbps:
+          type: number
+          nullable: true
+        uploadMbps:
+          type: number
+          nullable: true
+        latencyMs:
+          type: number
+          nullable: true
+        jitterMs:
+          type: number
+          nullable: true
+        packetLossPct:
+          type: number
+          nullable: true
+        retransmissionPct:
+          type: number
+          nullable: true
+        durationMs:
+          type: integer
+          nullable: true
+        serverName:
+          type: string
+          nullable: true
+        serverLocation:
+          type: string
+          nullable: true
+        serverHost:
+          type: string
+          nullable: true
+        error:
+          type: string
+          nullable: true
+    PreferencesResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          additionalProperties: true
+    StorageLimits:
+      type: object
+      required: [maxDatabaseBytes, maxIncidents, maxPingSamples, maxSpeedTests]
+      properties:
+        maxDatabaseBytes:
+          type: integer
+        maxIncidents:
+          type: integer
+        maxPingSamples:
+          type: integer
+        maxSpeedTests:
+          type: integer
+    StorageUsage:
+      type: object
+      required: [databaseBytes, incidents, pingSamples, speedTests]
+      properties:
+        databaseBytes:
+          type: integer
+        incidents:
+          type: integer
+        pingSamples:
+          type: integer
+        speedTests:
+          type: integer
+    StorageStats:
+      type: object
+      required: [autoPrune, limits, usage, percentUsed]
+      properties:
+        autoPrune:
+          type: boolean
+        limits:
+          $ref: "#/components/schemas/StorageLimits"
+        usage:
+          $ref: "#/components/schemas/StorageUsage"
+        percentUsed:
+          type: object
+          required: [database, incidents, pingSamples, speedTests]
+          properties:
+            database:
+              type: number
+            incidents:
+              type: number
+            pingSamples:
+              type: number
+            speedTests:
+              type: number
+    StorageClearResponse:
+      type: object
+      required: [deleted, stats]
+      properties:
+        deleted:
+          type: object
+          required: [incidents, pingSamples, speedTests]
+          properties:
+            incidents:
+              type: integer
+            pingSamples:
+              type: integer
+            speedTests:
+              type: integer
+        stats:
+          $ref: "#/components/schemas/StorageStats"
+    NetworkRefreshResponse:
+      type: object
+      required: [network]
+      properties:
+        network:
+          $ref: "#/components/schemas/NetworkIdentity"
+    WallpaperResponse:
+      type: object
+      required: [url, photographer, photoUrl]
+      properties:
+        url:
+          type: string
+        photographer:
+          type: string
+        photoUrl:
+          type: string
+    SmtpSettings:
+      type: object
+      required: [provider, host, port, username, fromEmail, fromName, useTls, configured, hasPassword]
+      properties:
+        provider:
+          type: string
+          enum: [resend, custom]
+        host:
+          type: string
+        port:
+          type: integer
+        username:
+          type: string
+        fromEmail:
+          type: string
+        fromName:
+          type: string
+        useTls:
+          type: boolean
+        configured:
+          type: boolean
+        hasPassword:
+          type: boolean
+    SmtpSettingsResponse:
+      type: object
+      required: [smtp]
+      properties:
+        smtp:
+          $ref: "#/components/schemas/SmtpSettings"
+    SmtpTestResponse:
+      type: object
+      required: [ok, message]
+      properties:
+        ok:
+          type: boolean
+        message:
+          type: string
+    TargetAlertRules:
+      type: object
+      properties:
+        targetId:
+          type: string
+        enabled:
+          type: boolean
+        notification:
+          type: boolean
+        sound:
+          type: boolean
+        email:
+          type: boolean
+        emailTo:
+          type: string
+        onDegraded:
+          type: boolean
+        onDown:
+          type: boolean
+        cooldownMs:
+          type: integer
+        smtpConfigured:
+          type: boolean
+    TargetAlertResponse:
+      type: object
+      required: [alert]
+      properties:
+        alert:
+          $ref: "#/components/schemas/TargetAlertRules"
+    PlatformAlertDefaults:
+      type: object
+      required:
+        - defaultNotification
+        - defaultSound
+        - defaultEmail
+        - defaultEmailTo
+        - defaultOnDegraded
+        - defaultOnDown
+        - defaultCooldownMs
+      properties:
+        defaultNotification:
+          type: boolean
+        defaultSound:
+          type: boolean
+        defaultEmail:
+          type: boolean
+        defaultEmailTo:
+          type: string
+        defaultOnDegraded:
+          type: boolean
+        defaultOnDown:
+          type: boolean
+        defaultCooldownMs:
+          type: integer
+    PlatformSettings:
+      type: object
+      required: [alerts]
+      properties:
+        alerts:
+          $ref: "#/components/schemas/PlatformAlertDefaults"
+    PlatformSettingsResponse:
+      type: object
+      required: [settings]
+      properties:
+        settings:
+          $ref: "#/components/schemas/PlatformSettings"

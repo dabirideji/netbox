@@ -7,9 +7,9 @@ import ssl
 import urllib.error
 import urllib.request
 
-from netbox.models import PingResult, Target
-from netbox.ping import ping_target
-from netbox.timeutils import now_ms
+from netbox.core.models import PingResult, Target
+from netbox.probes.ping import ping_target
+from netbox.util.timeutils import now_ms
 
 DEFAULT_HTTP_HEADERS = {
     "User-Agent": "NetboxMonitor/1.0 (+local uptime check)",

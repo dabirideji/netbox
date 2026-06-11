@@ -1,6 +1,6 @@
 import pytest
 
-from netbox.validation import (
+from netbox.util.validation import (
     parse_target_arg,
     validate_bind_host,
     validate_host,

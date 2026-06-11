@@ -7,10 +7,10 @@ from unittest.mock import patch
 
 import pytest
 
-from netbox.models import MonitorConfig, NetworkIdentity, Target
+from netbox.core.models import MonitorConfig, NetworkIdentity, Target
 from netbox.server import StatusHandler, StatusServer
-from netbox.state import MonitorState
-from netbox.wallpaper import fetch_wallpaper
+from netbox.monitor.state import MonitorState
+from netbox.server.wallpaper import fetch_wallpaper
 
 
 def config() -> MonitorConfig:
@@ -71,7 +71,7 @@ def test_fetch_wallpaper_returns_image_url(monkeypatch: pytest.MonkeyPatch) -> N
         captured["request"] = request
         return FakeResponse()
 
-    with patch("netbox.wallpaper.urllib.request.urlopen", side_effect=fake_urlopen):
+    with patch("netbox.server.wallpaper.urllib.request.urlopen", side_effect=fake_urlopen):
         result = fetch_wallpaper()
 
     request_url = captured["request"].full_url

@@ -16,9 +16,13 @@ const props = withDefaults(
     mode?: 'inline' | 'modal';
     eyebrow?: string;
     title?: string;
+    closeOnBackdrop?: boolean;
+    closeOnEscape?: boolean;
   }>(),
   {
     mode: 'modal',
+    closeOnBackdrop: true,
+    closeOnEscape: true,
   },
 );
 
@@ -29,7 +33,7 @@ const emit = defineEmits<{
 const titleId = useId();
 
 function onKeydown(event: KeyboardEvent): void {
-  if (props.mode !== 'modal' || event.key !== 'Escape') return;
+  if (props.mode !== 'modal' || event.key !== 'Escape' || !props.closeOnEscape) return;
   emit('close');
 }
 
@@ -67,11 +71,13 @@ onUnmounted(() => {
       :exit="modalBackdropExit"
     >
       <button
+        v-if="closeOnBackdrop"
         type="button"
         class="section-modal__backdrop"
         aria-label="Close dialog"
         @click="emit('close')"
       />
+      <div v-else class="section-modal__backdrop" aria-hidden="true" />
       <motion.div
         class="section-modal__frame section-modal__dialog"
         role="dialog"

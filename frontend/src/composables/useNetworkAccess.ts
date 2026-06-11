@@ -1,44 +1,100 @@
 import { computed, ref, type Ref } from 'vue';
-import { refreshNetworkIdentity } from '../api';
+import { fetchNetworkInterfaces, refreshNetworkIdentity } from '../api';
 import { isWifiNameHidden } from '../format';
-import type { NetworkIdentity } from '../types';
+import type { NetworkIdentity, NetworkInterfaceOption } from '../types';
+import { useMonitorStore } from '../stores/monitor';
 
-export interface NetworkAccessResponse {
-  ok: boolean;
-  ssid: string | null;
-  message: string;
+function selectionWifiName(option: NetworkInterfaceOption): string {
+  return option.ssid ?? option.label;
 }
 
 export function useNetworkAccess(network: Ref<NetworkIdentity | undefined>) {
+  const monitor = useMonitorStore();
   const isRefreshing = ref(false);
   const statusMessage = ref<string | null>(null);
+  const modalOpen = ref(false);
+  const interfaces = ref<NetworkInterfaceOption[]>([]);
+  const interfacesLoading = ref(false);
 
   const isHidden = computed(() => isWifiNameHidden(network.value));
+  const activeInterface = computed(() => network.value?.interface ?? null);
 
-  async function requestNetworkAccess(): Promise<void> {
+  async function loadInterfaces(): Promise<void> {
+    interfacesLoading.value = true;
+    try {
+      const response = await fetchNetworkInterfaces();
+      interfaces.value = response.interfaces;
+    } catch {
+      interfaces.value = [];
+    } finally {
+      interfacesLoading.value = false;
+    }
+  }
+
+  function closeModal(): void {
+    modalOpen.value = false;
+    statusMessage.value = null;
+  }
+
+  function applyNetworkResponse(networkIdentity: NetworkIdentity): void {
+    monitor.patchNetwork(networkIdentity);
+  }
+
+  async function openNetworkModal(): Promise<void> {
+    statusMessage.value = null;
+    modalOpen.value = true;
+    await loadInterfaces();
+  }
+
+  async function refreshNetworkList(): Promise<void> {
+    statusMessage.value = null;
+    await loadInterfaces();
+  }
+
+  async function selectNetworkInterface(option: NetworkInterfaceOption): Promise<void> {
     isRefreshing.value = true;
     statusMessage.value = null;
 
     try {
-      if (typeof window !== 'undefined' && window.netboxDesktop?.requestNetworkAccess) {
-        const result = (await window.netboxDesktop.requestNetworkAccess()) as NetworkAccessResponse;
-        statusMessage.value = result.message;
-        if (!result.ok && !result.ssid) {
-          return;
-        }
-        return;
-      }
+      const wifiName = selectionWifiName(option);
+      const response = await refreshNetworkIdentity({
+        interface: option.interface,
+        wifiName,
+      });
 
-      const response = await refreshNetworkIdentity();
-      if (response.network.ssid) {
-        statusMessage.value = `Wi‑Fi ${response.network.ssid} is now visible.`;
-        return;
-      }
-
-      statusMessage.value =
-        'Still hidden. On macOS, enable Location Services for your terminal app or Netbox in System Settings → Privacy & Security → Location Services, then try again.';
+      applyNetworkResponse(response.network);
+      statusMessage.value = response.network.ssid ?? response.network.name;
+      modalOpen.value = false;
     } catch (error) {
-      statusMessage.value = error instanceof Error ? error.message : 'Unable to refresh network name';
+      statusMessage.value = error instanceof Error ? error.message : 'Could not apply.';
+    } finally {
+      isRefreshing.value = false;
+    }
+  }
+
+  async function saveManualNetworkName(ssid: string): Promise<void> {
+    isRefreshing.value = true;
+    statusMessage.value = null;
+
+    const active = interfaces.value.find((option) => option.active);
+
+    try {
+      const response = await refreshNetworkIdentity({
+        wifiName: ssid,
+        ...(active?.interface ? { interface: active.interface } : {}),
+      });
+
+      applyNetworkResponse(response.network);
+
+      if (response.network.ssid) {
+        statusMessage.value = response.network.ssid;
+        modalOpen.value = false;
+        return;
+      }
+
+      statusMessage.value = 'Could not save.';
+    } catch (error) {
+      statusMessage.value = error instanceof Error ? error.message : 'Could not save.';
     } finally {
       isRefreshing.value = false;
     }
@@ -48,6 +104,14 @@ export function useNetworkAccess(network: Ref<NetworkIdentity | undefined>) {
     isHidden,
     isRefreshing,
     statusMessage,
-    requestNetworkAccess,
+    modalOpen,
+    activeInterface,
+    interfaces,
+    interfacesLoading,
+    closeModal,
+    openNetworkModal,
+    refreshNetworkList,
+    selectNetworkInterface,
+    saveManualNetworkName,
   };
 }

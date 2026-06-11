@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { sortLiveCheckTargets } from './liveChecks';
+import { formatTargetLastValue, sortLiveCheckTargets } from './liveChecks';
 import type { TargetSummary } from './types';
 
 function target(id: string, favorite = false): TargetSummary {
@@ -35,6 +35,45 @@ function target(id: string, favorite = false): TargetSummary {
     history: [],
   };
 }
+
+describe('formatTargetLastValue', () => {
+  it('keeps the last latency reading when a target is paused without a fresh sample', () => {
+    const value = formatTargetLastValue({
+      ...target('dns'),
+      enabled: false,
+      lastLatencyMs: null,
+      lastError: 'timeout',
+      history: [{ at: 1, status: 'operational', latencyMs: 42, error: null }],
+    });
+
+    expect(value).toBe('42.0ms');
+  });
+
+  it('shows a dash instead of fail when paused with no prior reading', () => {
+    expect(
+      formatTargetLastValue({
+        ...target('dns'),
+        enabled: false,
+        lastLatencyMs: null,
+        lastError: null,
+        history: [],
+      }),
+    ).toBe('—');
+  });
+
+  it('shows pending before the first enabled check after startup', () => {
+    expect(
+      formatTargetLastValue({
+        ...target('dns'),
+        enabled: true,
+        lastLatencyMs: null,
+        lastCheckedAt: null,
+        lastError: null,
+        history: [],
+      }),
+    ).toBe('pending');
+  });
+});
 
 describe('sortLiveCheckTargets', () => {
   it('keeps favorites above non-favorites while preserving relative order', () => {

@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from netbox.cli import (
+from netbox.cli.app import (
     apply_runtime_target_seeds,
     database_exists,
     ensure_initialized,
@@ -52,8 +52,8 @@ def test_resolve_static_dir_rejects_missing_directory(tmp_path: Path) -> None:
 def test_resolve_static_dir_uses_dev_placeholder_without_dist(tmp_path: Path, monkeypatch) -> None:
     project_root = tmp_path / "project"
     dist_dir = project_root / "frontend" / "dist"
-    monkeypatch.setattr("netbox.cli.PROJECT_ROOT", project_root)
-    monkeypatch.setattr("netbox.cli.DEFAULT_STATIC_DIR", dist_dir)
+    monkeypatch.setattr("netbox.cli.app.PROJECT_ROOT", project_root)
+    monkeypatch.setattr("netbox.cli.app.DEFAULT_STATIC_DIR", dist_dir)
 
     dev_static = resolve_static_dir(None, dev_mode=True)
 

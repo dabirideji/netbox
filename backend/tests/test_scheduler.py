@@ -1,10 +1,10 @@
 from pathlib import Path
 
-from netbox.models import MonitorConfig, NetworkIdentity, PingResult, Target
-from netbox.scheduler import TargetScheduler
-from netbox.state import MonitorState
+from netbox.core.models import MonitorConfig, NetworkIdentity, PingResult, Target
+from netbox.monitor.scheduler import TargetScheduler
+from netbox.monitor.state import MonitorState
 from netbox.storage import StatusStore
-from netbox.timeutils import now_ms
+from netbox.util.timeutils import now_ms
 
 
 def config(db_path: str = ":memory:") -> MonitorConfig:
@@ -82,7 +82,7 @@ def test_state_check_now_persists_result(monkeypatch, tmp_path: Path) -> None:
             None,
         )
 
-    monkeypatch.setattr("netbox.state.run_check", fake_run_check)
+    monkeypatch.setattr("netbox.monitor.state.run_check", fake_run_check)
 
     try:
         response = state.check_now(target.id)
@@ -119,7 +119,7 @@ def test_state_preview_target_check_does_not_persist(monkeypatch, tmp_path: Path
             None,
         )
 
-    monkeypatch.setattr("netbox.state.run_check", fake_run_check)
+    monkeypatch.setattr("netbox.monitor.state.run_check", fake_run_check)
 
     try:
         response = state.preview_target_check(

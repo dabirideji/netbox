@@ -86,6 +86,29 @@ def migrate_monitor_targets_is_favorite(connection: sqlite3.Connection) -> None:
     connection.execute("ALTER TABLE monitor_targets ADD COLUMN is_favorite INTEGER NOT NULL DEFAULT 0")
 
 
+def migrate_storage_settings(connection: sqlite3.Connection) -> None:
+    """Add persisted storage retention settings."""
+
+    tables = {
+        row[0]
+        for row in connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table'",
+        ).fetchall()
+    }
+    if "storage_settings" in tables:
+        return
+
+    connection.executescript(
+        """
+        CREATE TABLE storage_settings (
+          id INTEGER PRIMARY KEY CHECK (id = 1),
+          data TEXT NOT NULL DEFAULT '{}',
+          updated_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
+        );
+        """
+    )
+
+
 def migrate_monitor_targets_sort_order(connection: sqlite3.Connection) -> None:
     """Add persisted target ordering when upgrading older databases."""
 

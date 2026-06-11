@@ -5,11 +5,30 @@ from __future__ import annotations
 from typing import Any
 
 from netbox.storage.config import build_time_filter
-from netbox.storage.rows import check_result_from_row
+from netbox.storage.rows import check_result_from_row, sample_result_from_check_row
 
 
 class HistoryStoreMixin:
     """Overview and per-target history queries."""
+
+    def latest_check_results_by_target(self) -> dict[str, dict[str, Any]]:
+        """Return the newest persisted check result per target for summary hydration."""
+
+        with self.lock:
+            rows = self.connection.execute(
+                """
+                SELECT cr.*
+                FROM check_results cr
+                INNER JOIN (
+                  SELECT target_id, MAX(checked_at) AS checked_at
+                  FROM check_results
+                  GROUP BY target_id
+                ) latest
+                  ON cr.target_id = latest.target_id
+                 AND cr.checked_at = latest.checked_at
+                """
+            ).fetchall()
+        return {row["target_id"]: sample_result_from_check_row(row) for row in rows}
 
     def target_results(
         self,

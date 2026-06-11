@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from netbox.crypto import decrypt_secret, encrypt_secret
+from netbox.util.crypto import decrypt_secret, encrypt_secret
 
 
 def test_encrypt_decrypt_round_trip(tmp_path: Path) -> None:

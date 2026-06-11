@@ -7,6 +7,7 @@ interface NetboxDesktopNetworkAccessResult {
   ok: boolean;
   ssid: string | null;
   message: string;
+  needsLocationSettings?: boolean;
 }
 
 interface NetboxDesktopBridge {
@@ -17,6 +18,7 @@ interface NetboxDesktopBridge {
   endTrayDrag?: () => void;
   hideTray?: () => void;
   requestNetworkAccess?: () => Promise<NetboxDesktopNetworkAccessResult>;
+  openLocationSettings?: () => Promise<void>;
 }
 
 interface Window {

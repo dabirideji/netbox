@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from netbox.models import MonitorConfig, Target
+from netbox.core.models import MonitorConfig, Target
 from netbox.storage import StatusStore
 
 
@@ -474,9 +474,9 @@ def test_status_store_persists_ui_preferences(tmp_path: Path) -> None:
         current = store.get_preferences()
         assert current["dashboard_sections_collapsed"]["timeline"] is True
 
-        merged_again = store.update_preferences({"dashboard_home_mode": "compact"})
+        merged_again = store.update_preferences({"event_page": 3})
         assert merged_again["dashboard_sections_collapsed"]["timeline"] is True
-        assert merged_again["dashboard_home_mode"] == "compact"
+        assert merged_again["event_page"] == 3
 
         merged_sections = store.update_preferences(
             {"dashboard_sections_collapsed": {"incidentLog": True}},

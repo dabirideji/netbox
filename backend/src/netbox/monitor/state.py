@@ -12,15 +12,23 @@ from typing import Any
 from netbox.alerts import dispatch_ongoing_alerts, dispatch_target_alerts, smtp_settings_to_api, target_alert_to_api
 from netbox.alerts.platform import platform_settings_to_api
 from netbox.alerts.smtp_client import build_alert_email, send_alert_email
-from netbox.checks import run_check
-from netbox.models import MonitorConfig, NetworkIdentity, Target
-from netbox.network import clean_network_name, detect_default_gateway, detect_network_identity
-from netbox.responses import monitor_status_severity
-from netbox.speed import ONE_DAY_MS, normalize_speed_test, speed_policy
+from netbox.probes.checks import run_check
+from netbox.core.models import MonitorConfig, NetworkIdentity, Target
+from netbox.probes.network import (
+    clean_network_name,
+    detect_default_gateway,
+    detect_network_identity,
+    detect_network_identity_for_interface,
+    list_network_interfaces,
+    network_identity_should_sync,
+)
+from netbox.core.responses import monitor_status_severity
+from netbox.monitor.speed import ONE_DAY_MS, normalize_speed_test, speed_policy
 from netbox.storage import DEFAULT_STORAGE_CONFIG, StatusStore
-from netbox.summary import capture_events, latency_warn_ms_for, status_for_result, summarize
+from netbox.monitor.summary import capture_events, latency_warn_ms_for, status_for_result, summarize
 from netbox.targets import gateway_host_sync_payload, normalize_target_payload, target_to_api
-from netbox.timeutils import now_ms
+from netbox.util.macos import detect_location_client
+from netbox.util.timeutils import now_ms
 
 
 class MonitorState:
@@ -101,19 +109,35 @@ class MonitorState:
         self.broadcast({"type": "status", "summary": summary})
         return summary
 
-    def refresh_network_identity(self, wifi_name: str | None = None) -> dict[str, Any]:
+    def list_network_interfaces(self) -> dict[str, Any]:
+        """Return selectable local network interfaces."""
+
+        return {"interfaces": list_network_interfaces()}
+
+    def refresh_network_identity(
+        self,
+        wifi_name: str | None = None,
+        interface: str | None = None,
+    ) -> dict[str, Any]:
         """Re-detect or apply a Wi-Fi name and broadcast an updated status snapshot."""
 
         with self.lock:
             if wifi_name:
                 cleaned = clean_network_name(wifi_name)
                 if cleaned:
+                    current_interface = interface or self.network.interface
+                    current_service = self.network.service
+                    if current_interface:
+                        detected = detect_network_identity_for_interface(current_interface, cleaned)
+                        current_service = detected.service
                     self.network = NetworkIdentity(
                         name=cleaned,
                         ssid=cleaned,
-                        interface=self.network.interface,
-                        service=self.network.service,
+                        interface=current_interface,
+                        service=current_service,
                     )
+            elif interface:
+                self.network = detect_network_identity_for_interface(interface, self.config.wifi_name)
             else:
                 self.network = detect_network_identity(self.config.wifi_name)
 
@@ -125,7 +149,7 @@ class MonitorState:
             self.last_summary = summary
 
         self.broadcast({"type": "status", "summary": summary})
-        return {"network": asdict(self.network)}
+        return {"network": asdict(self.network), "locationClient": detect_location_client()}
 
     def snapshot(self) -> dict[str, Any]:
         """Return the latest summary, creating an empty one if needed."""
@@ -206,7 +230,12 @@ class MonitorState:
         store = self._require_store()
         target = store.update_target(target_id, payload)
         self.reload_targets()
-        self.broadcast({"type": "targets", **self.list_targets()})
+        targets_response = self.list_targets()
+        with self.lock:
+            summary = self._summarize()
+            self.last_summary = summary
+            self.broadcast({"type": "status", "summary": summary})
+        self.broadcast({"type": "targets", **targets_response})
         return {"target": target_to_api(target)}
 
     def delete_target(self, target_id: str) -> dict[str, Any]:
@@ -319,6 +348,26 @@ class MonitorState:
             with self.lock:
                 self.targets = self.store.list_targets()
 
+    def sync_detected_network(self) -> bool:
+        """Refresh network identity when the active interface or SSID changes."""
+
+        detected = detect_network_identity(self.config.wifi_name)
+
+        with self.lock:
+            if not network_identity_should_sync(self.network, detected):
+                return False
+
+            self.network = detected
+            summary = (
+                {**self.last_summary, "network": asdict(self.network)}
+                if self.last_summary
+                else self._summarize()
+            )
+            self.last_summary = summary
+
+        self.broadcast({"type": "status", "summary": summary})
+        return True
+
     def sync_detected_gateway(self) -> bool:
         """Refresh the auto-detected gateway target when the default route changes."""
 
@@ -391,6 +440,26 @@ class MonitorState:
         if not self.store:
             return empty_storage_stats(self.config.storage_config)
         return self.store.storage_stats()
+
+    def storage_settings(self) -> dict[str, Any]:
+        """Return persisted storage retention settings."""
+
+        if not self.store:
+            from netbox.storage.config import normalize_storage_config
+            from netbox.storage.settings import storage_settings_to_api
+
+            config = normalize_storage_config(self.config.storage_config)
+            return {"settings": storage_settings_to_api(config)}
+        return {"settings": self.store.get_storage_settings()}
+
+    def update_storage_settings(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Persist storage retention settings and return updated stats."""
+
+        if not self.store:
+            raise ValueError("log storage is unavailable")
+
+        settings = self.store.update_storage_settings(payload)
+        return {"settings": settings, "stats": self.store.storage_stats()}
 
     def clear_storage(self, scope: str) -> dict[str, Any]:
         """Manually clear one persisted log scope."""
@@ -577,7 +646,16 @@ class MonitorState:
     def _summarize(self) -> dict[str, Any]:
         """Build a summary from the currently retained in-memory samples."""
 
-        return summarize(self.samples, self.targets, self.config, self.events, self.network, self.started_at)
+        persisted_latest = self.store.latest_check_results_by_target() if self.store else None
+        return summarize(
+            self.samples,
+            self.targets,
+            self.config,
+            self.events,
+            self.network,
+            self.started_at,
+            persisted_latest,
+        )
 
     def _require_store(self) -> StatusStore:
         """Return the persistence gateway or fail for storage-backed APIs."""

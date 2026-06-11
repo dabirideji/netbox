@@ -6,7 +6,7 @@ import json
 import sqlite3
 from typing import Any
 
-from netbox.models import Target
+from netbox.core.models import Target
 
 
 def target_from_row(row: sqlite3.Row) -> Target:
@@ -35,6 +35,24 @@ def target_from_row(row: sqlite3.Row) -> Target:
         sort_order=int(row["sort_order"]),
         is_favorite=bool(row["is_favorite"]),
     )
+
+
+def sample_result_from_check_row(row: sqlite3.Row) -> dict[str, Any]:
+    """Convert one check-result row into the in-memory sample result shape."""
+
+    return {
+        "id": row["target_id"],
+        "host": row["host"],
+        "label": row["label"],
+        "scope": row["scope"],
+        "type": row["target_type"],
+        "protocol": row["protocol"],
+        "ok": bool(row["ok"]),
+        "latencyMs": row["latency_ms"],
+        "error": row["error"],
+        "checkedAt": row["checked_at"],
+        "durationMs": row["duration_ms"],
+    }
 
 
 def check_result_from_row(row: sqlite3.Row) -> dict[str, Any]:

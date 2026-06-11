@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://netbox.local/schemas/storage-settings.patch.schema.json",
+  "title": "Storage settings patch",
+  "type": "object",
+  "additionalProperties": false,
+  "minProperties": 1,
+  "properties": {
+    "autoPrune": { "type": "boolean" },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "maxDatabaseBytes": {
+          "type": "integer",
+          "minimum": 1048576,
+          "maximum": 107374182400
+        },
+        "maxIncidents": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000000
+        },
+        "maxPingSamples": {
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 10000000
+        },
+        "maxSpeedTests": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000
+        }
+      }
+    }
+  }
+}

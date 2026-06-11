@@ -1,5 +1,5 @@
-from netbox.models import MonitorConfig, NetworkIdentity, Target
-from netbox.state import MonitorState
+from netbox.core.models import MonitorConfig, NetworkIdentity, Target
+from netbox.monitor.state import MonitorState
 from netbox.storage import StatusStore
 
 
@@ -64,6 +64,62 @@ def test_state_captures_status_change_events() -> None:
     assert summary["events"][0]["to"] == "degraded"
 
 
+def test_state_sync_detected_network_updates_ssid(monkeypatch) -> None:
+    target = Target("gateway", "127.0.0.1", "Loopback", "gateway")
+    state = MonitorState(
+        config(),
+        [target],
+        NetworkIdentity("Home", "Home", "en0", "Wi-Fi"),
+        0,
+    )
+    state.append_sample(sample(target, True, 5, 1_000))
+
+    monkeypatch.setattr(
+        "netbox.monitor.state.detect_network_identity",
+        lambda _override="": NetworkIdentity("Office", "Office", "en0", "Wi-Fi"),
+    )
+
+    assert state.sync_detected_network() is True
+    assert state.snapshot()["network"]["ssid"] == "Office"
+
+
+def test_state_refresh_network_identity_applies_interface_and_name() -> None:
+    target = Target("gateway", "127.0.0.1", "Loopback", "gateway")
+    state = MonitorState(
+        config(),
+        [target],
+        NetworkIdentity("Home", "Home", "en0", "Wi-Fi"),
+        0,
+    )
+    state.append_sample(sample(target, True, 5, 1_000))
+
+    payload = state.refresh_network_identity("Office WiFi", "en0")
+
+    assert payload["network"]["ssid"] == "Office WiFi"
+    assert payload["network"]["interface"] == "en0"
+    assert state.snapshot()["network"]["ssid"] == "Office WiFi"
+
+
+def test_state_refresh_network_identity_applies_interface(monkeypatch) -> None:
+    target = Target("gateway", "127.0.0.1", "Loopback", "gateway")
+    state = MonitorState(
+        config(),
+        [target],
+        NetworkIdentity("Wi-Fi (en0)", None, "en0", "Wi-Fi"),
+        0,
+    )
+    state.append_sample(sample(target, True, 5, 1_000))
+
+    monkeypatch.setattr(
+        "netbox.monitor.state.detect_network_identity_for_interface",
+        lambda interface, override="": NetworkIdentity("Office", "Office", interface, "Wi-Fi"),
+    )
+
+    payload = state.refresh_network_identity(interface="en0")
+
+    assert payload["network"]["ssid"] == "Office"
+
+
 def test_state_refresh_network_identity_applies_wifi_name() -> None:
     target = Target("gateway", "127.0.0.1", "Loopback", "gateway")
     state = MonitorState(
@@ -98,3 +154,23 @@ def test_state_persists_and_hydrates_status_events(tmp_path) -> None:
 
     assert snapshot["events"][0]["targetLabel"] == "Loopback"
     assert snapshot["events"][0]["to"] == "degraded"
+
+
+def test_snapshot_hydrates_last_reading_after_restart_without_memory_samples(tmp_path) -> None:
+    target = Target("gateway", "127.0.0.1", "Loopback", "gateway")
+    store = StatusStore(tmp_path / "status.sqlite3")
+    state = MonitorState(config(), [target], NetworkIdentity("Test", "Test", "en0", "Wi-Fi"), 0, store)
+    state.append_sample(sample(target, True, 23.5, 1_000))
+    store.close()
+
+    restarted_store = StatusStore(tmp_path / "status.sqlite3")
+    try:
+        restarted = MonitorState(config(), [target], NetworkIdentity("Test", "Test", "en0", "Wi-Fi"), 0, restarted_store)
+        snapshot = restarted.snapshot()
+    finally:
+        restarted_store.close()
+
+    gateway_summary = snapshot["targets"][0]
+    assert gateway_summary["lastLatencyMs"] == 23.5
+    assert gateway_summary["lastCheckedAt"] == 1_000
+    assert gateway_summary["lastOk"] is True

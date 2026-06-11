@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://netbox.local/schemas/platform-settings.patch.schema.json",
+  "title": "Platform settings patch",
+  "type": "object",
+  "additionalProperties": false,
+  "minProperties": 1,
+  "properties": {
+    "alerts": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "defaultNotification": { "type": "boolean" },
+        "defaultSound": { "type": "boolean" },
+        "defaultEmail": { "type": "boolean" },
+        "defaultEmailTo": { "type": "string", "maxLength": 320 },
+        "defaultOnDegraded": { "type": "boolean" },
+        "defaultOnDown": { "type": "boolean" },
+        "defaultCooldownMs": {
+          "type": "integer",
+          "minimum": 30000,
+          "maximum": 3600000
+        }
+      }
+    }
+  }
+}

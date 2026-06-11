@@ -2,8 +2,8 @@ import subprocess
 
 import pytest
 
-from netbox.models import Target
-from netbox.ping import normalize_ping_error, parse_latency, ping_command, ping_target
+from netbox.core.models import Target
+from netbox.probes.ping import normalize_ping_error, parse_latency, ping_command, ping_target
 
 
 def test_parse_latency_unix_output() -> None:

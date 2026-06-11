@@ -10,7 +10,7 @@ import {
   userDatabasePath,
 } from './backend';
 import { APP_NAME, DEFAULT_BACKEND_PORT } from './constants';
-import { requestWifiNetworkAccess } from './networkAccess';
+import { openMacLocationSettings, requestWifiNetworkAccess } from './networkAccess';
 import {
   closeTrayWindow,
   hideTrayWindow,
@@ -229,6 +229,10 @@ function showMainWindow(): void {
 }
 
 function registerNetworkHandlers(): void {
+  ipcMain.handle('network:open-location-settings', async () => {
+    await openMacLocationSettings();
+  });
+
   ipcMain.handle('network:request-access', async () => {
     const result = await requestWifiNetworkAccess();
 

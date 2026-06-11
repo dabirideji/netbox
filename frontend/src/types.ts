@@ -190,9 +190,30 @@ export interface LiveCheckResult {
   error: string | null;
 }
 
+/** One selectable local network interface from `/api/network/interfaces`. */
+export interface NetworkInterfaceOption {
+  service: string | null;
+  interface: string;
+  ssid: string | null;
+  active: boolean;
+  label: string;
+  hidden: boolean;
+}
+
+/** Response from `/api/network/interfaces`. */
+export interface NetworkInterfacesResponse {
+  interfaces: NetworkInterfaceOption[];
+}
+
 /** Response from `/api/network/refresh`. */
 export interface NetworkRefreshResponse {
   network: NetworkIdentity;
+  locationClient?: string | null;
+}
+
+/** Response from `/api/network/location-client`. */
+export interface NetworkLocationClientResponse {
+  client: string | null;
 }
 
 /** Response from `POST /api/targets/preview-check`. */
@@ -344,6 +365,22 @@ export interface StorageStats {
     pingSamples: number;
     speedTests: number;
   };
+}
+
+export interface StorageSettings {
+  autoPrune: boolean;
+  limits: StorageLimits;
+}
+
+/** Response from `/api/storage/settings`. */
+export interface StorageSettingsResponse {
+  settings: StorageSettings;
+}
+
+/** Response from `PATCH /api/storage/settings`. */
+export interface StorageSettingsUpdateResponse {
+  settings: StorageSettings;
+  stats: StorageStats;
 }
 
 /** Response from `/api/storage` and `/api/storage/clear`. */

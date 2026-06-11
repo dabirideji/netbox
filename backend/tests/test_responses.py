@@ -1,4 +1,4 @@
-from netbox.responses import (
+from netbox.core.responses import (
     STATUS_SEVERITY,
     VALID_SPEED_STATUSES,
     api_error_body,

@@ -7,9 +7,9 @@ from collections.abc import Callable
 from dataclasses import asdict
 from typing import Any
 
-from netbox.models import MonitorConfig, NetworkIdentity, Target
-from netbox.responses import Status
-from netbox.timeutils import now_ms
+from netbox.core.models import MonitorConfig, NetworkIdentity, Target
+from netbox.core.responses import Status
+from netbox.util.timeutils import now_ms
 
 HTTPS_LATENCY_WARN_MS = 3_000.0
 REACHABILITY_PROTOCOLS = frozenset({"http", "https", "tcp"})
@@ -22,6 +22,7 @@ def summarize(
     events: list[dict[str, Any]],
     network: NetworkIdentity,
     started_at: int,
+    persisted_latest: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Build the API/UI summary from retained samples and target config."""
 
@@ -34,6 +35,8 @@ def summarize(
         failed = len(results) - len(successful)
         latencies = [result["latencyMs"] for result in successful if result["latencyMs"] is not None]
         recent = results[-1] if results else None
+        if recent is None and persisted_latest:
+            recent = persisted_latest.get(target.id)
         recent_window = results[-config.recent_window :]
         reachability = is_reachability_check(target)
         latency_warn_ms = None if reachability else latency_warn_ms_for(target, config)

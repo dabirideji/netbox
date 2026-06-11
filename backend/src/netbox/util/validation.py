@@ -5,7 +5,7 @@ from __future__ import annotations
 import ipaddress
 import re
 
-from netbox.models import Scope, Target
+from netbox.core.models import Scope, Target
 
 DOMAIN_RE = re.compile(
     r"^(?=.{1,253}$)(?!-)[A-Za-z0-9-]{1,63}(?<!-)(?:\.(?!-)[A-Za-z0-9-]{1,63}(?<!-))*\.?$"

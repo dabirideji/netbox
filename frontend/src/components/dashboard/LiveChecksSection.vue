@@ -7,7 +7,7 @@ import { useTargetDragReorder } from '../../composables/useTargetDragReorder';
 import { formatClock, formatDate, formatMs, formatPct } from '../../format';
 import { reorderTargetsByIds } from '../../targetOrder';
 import { isReconnectingState } from '../../stores/monitor';
-import { sortLiveCheckTargets } from '../../liveChecks';
+import { formatTargetLastValue, sortLiveCheckTargets } from '../../liveChecks';
 import { useTargetsStore } from '../../stores';
 import { targetServiceIcon } from '../../targetIcons';
 import { targetColorForSource } from '../../targetColors';
@@ -67,10 +67,6 @@ watch(
     }
   },
 );
-
-function lastValue(target: TargetSummary): string {
-  return target.lastLatencyMs == null ? target.lastError ?? 'fail' : formatMs(target.lastLatencyMs);
-}
 
 function lastChecked(target: TargetSummary): string {
   return target.lastCheckedAt == null ? 'pending' : formatClock(target.lastCheckedAt);
@@ -245,7 +241,7 @@ function togglePaused(target: TargetSummary): void {
                 :title="targetBarTitle(target, point)"
               />
             </div>
-            <div class="component-cell stat">{{ lastValue(target) }}</div>
+            <div class="component-cell stat">{{ formatTargetLastValue(target) }}</div>
             <div class="component-cell stat">{{ lastChecked(target) }}</div>
             <div class="component-cell stat">{{ formatPct(target.uptimePct) }}</div>
             <div class="component-cell stat">{{ incidentState(target) }}</div>

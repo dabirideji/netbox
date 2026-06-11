@@ -12,7 +12,7 @@ from netbox.alerts.schedule import (
     mark_channel_sent,
 )
 from netbox.alerts.smtp_client import build_alert_email, send_alert_email
-from netbox.timeutils import now_ms
+from netbox.util.timeutils import now_ms
 
 
 def should_alert_for_status(rules: dict[str, Any], status: str) -> bool:

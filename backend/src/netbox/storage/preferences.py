@@ -6,6 +6,7 @@ import json
 from typing import Any
 
 from netbox.storage.config import merge_preferences
+from netbox.util.json_schema import validate_json_schema
 
 
 class PreferenceStoreMixin:
@@ -34,6 +35,8 @@ class PreferenceStoreMixin:
 
         if not isinstance(updates, dict):
             raise ValueError("preferences payload must be a JSON object")
+
+        validate_json_schema("ui-preferences.patch", updates)
 
         with self.lock:
             current = self.get_preferences()

@@ -18,4 +18,5 @@ contextBridge.exposeInMainWorld('netboxDesktop', {
     ipcRenderer.send('tray:hide');
   },
   requestNetworkAccess: () => ipcRenderer.invoke('network:request-access'),
+  openLocationSettings: () => ipcRenderer.invoke('network:open-location-settings'),
 });

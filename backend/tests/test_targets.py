@@ -1,6 +1,6 @@
 import pytest
 
-from netbox.models import Target
+from netbox.core.models import Target
 from netbox.targets import (
     default_interval_ms,
     gateway_host_sync_payload,

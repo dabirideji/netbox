@@ -6,9 +6,10 @@ import re
 from typing import Any
 from urllib.parse import urlparse, urlunparse
 
-from netbox.models import Target, TargetProtocol, TargetType
-from netbox.timeutils import parse_duration
-from netbox.validation import slug, validate_host, validate_label, validate_port, validate_scope
+from netbox.core.models import Target, TargetProtocol, TargetType
+from netbox.util.timeutils import parse_duration
+from netbox.util.http_headers import validate_http_headers
+from netbox.util.validation import slug, validate_host, validate_label, validate_port, validate_scope
 
 VALID_TARGET_TYPES: set[str] = {"website", "api", "host", "port", "dns"}
 VALID_PROTOCOLS: set[str] = {"http", "https", "tcp", "icmp", "dns"}
@@ -158,8 +159,7 @@ def normalize_config(protocol: TargetProtocol, raw_config: Any, payload: dict[st
             raise ValueError("HTTP method must be GET, HEAD, or POST")
 
         headers = config.get("headers", {})
-        if not isinstance(headers, dict):
-            raise ValueError("headers must be an object")
+        normalized_headers = validate_http_headers(headers)
 
         expected_status = int(config.get("expectedStatus", 200))
         if expected_status < 100 or expected_status > 599:
@@ -172,7 +172,7 @@ def normalize_config(protocol: TargetProtocol, raw_config: Any, payload: dict[st
         return {
             "url": url,
             "method": method,
-            "headers": {str(key): str(value) for key, value in headers.items()},
+            "headers": normalized_headers,
             "expectedStatus": expected_status,
             "keyword": keyword or "",
         }

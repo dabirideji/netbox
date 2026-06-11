@@ -128,6 +128,15 @@ export const useMonitorStore = defineStore(
       };
     }
 
+    function patchNetwork(network: StatusSummary['network']): void {
+      if (!summary.value) return;
+
+      summary.value = {
+        ...summary.value,
+        network,
+      };
+    }
+
     function syncSummaryTargets(targets: MonitorTarget[]): void {
       if (!summary.value) return;
 
@@ -158,6 +167,7 @@ export const useMonitorStore = defineStore(
       setTargetFavorite,
       setTargetEnabled,
       syncSummaryTargets,
+      patchNetwork,
     };
   },
   {

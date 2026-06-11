@@ -1,5 +1,5 @@
-from netbox.models import MonitorConfig, NetworkIdentity, Target
-from netbox.summary import summarize
+from netbox.core.models import MonitorConfig, NetworkIdentity, Target
+from netbox.monitor.summary import summarize
 
 
 def config() -> MonitorConfig:
@@ -115,6 +115,27 @@ def test_reachability_target_is_down_on_failure_not_degraded() -> None:
 
     assert summary["targets"][0]["currentStatus"] == "down"
     assert summary["targets"][0]["history"][-1]["status"] == "down"
+
+
+def test_summarize_hydrates_last_reading_from_persisted_latest() -> None:
+    gateway = Target("gateway", "127.0.0.1", "Loopback", "gateway")
+    persisted = {
+        "gateway": result(gateway, True, 23.5, 9_000),
+    }
+
+    summary = summarize(
+        [],
+        [gateway],
+        config(),
+        [],
+        NetworkIdentity("Test", "Test", "en0", "Wi-Fi"),
+        0,
+        persisted,
+    )
+
+    assert summary["targets"][0]["lastLatencyMs"] == 23.5
+    assert summary["targets"][0]["lastCheckedAt"] == 9_000
+    assert summary["targets"][0]["lastOk"] is True
 
 
 def test_summarize_identifies_gateway_down() -> None:

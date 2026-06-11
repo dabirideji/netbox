@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from netbox.models import MonitorConfig, Target
+from netbox.core.models import MonitorConfig, Target
 from netbox.storage.constants import STATUS_SEVERITY
-from netbox.summary import latency_warn_ms_for, status_for_result
+from netbox.monitor.summary import latency_warn_ms_for, status_for_result
 
 
 class SampleStoreMixin:

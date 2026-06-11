@@ -1,6 +1,6 @@
 import pytest
 
-from netbox.timeutils import format_duration, parse_duration
+from netbox.util.timeutils import format_duration, parse_duration
 
 
 def test_parse_duration_units() -> None:

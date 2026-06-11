@@ -14,6 +14,11 @@
   --text: #f4f4f5;
   --muted: #a1a1aa;
   --faint: #71717a;
+  --glass-blur: 16px;
+  --glass-saturate: 1.2;
+  --glass-surface: color-mix(in srgb, var(--surface) 82%, transparent);
+  --glass-surface-soft: color-mix(in srgb, var(--surface-soft) 78%, transparent);
+  --glass-surface-muted: color-mix(in srgb, var(--surface-muted) 75%, transparent);
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   color-scheme: dark;
@@ -81,10 +86,10 @@ body {
 body.has-wallpaper {
   background: transparent;
   --wallpaper-overlay: rgb(9 9 11 / 0.42);
-  --glass-blur: 18px;
-  --glass-surface: color-mix(in srgb, var(--surface) 90%, transparent);
-  --glass-surface-soft: color-mix(in srgb, var(--surface-soft) 90%, transparent);
-  --glass-surface-muted: color-mix(in srgb, var(--surface-muted) 90%, transparent);
+  --glass-blur: 20px;
+  --glass-surface: color-mix(in srgb, var(--surface) 88%, transparent);
+  --glass-surface-soft: color-mix(in srgb, var(--surface-soft) 84%, transparent);
+  --glass-surface-muted: color-mix(in srgb, var(--surface-muted) 82%, transparent);
 }
 
 [data-theme="light"] body.has-wallpaper {
@@ -106,13 +111,18 @@ body.has-wallpaper::before {
   background-repeat: no-repeat;
 }
 
-body.has-wallpaper :is(.dashboard-card, .theme-switcher__button) {
-  background: var(--glass-surface);
-  backdrop-filter: blur(var(--glass-blur));
-  -webkit-backdrop-filter: blur(var(--glass-blur));
+.shell :is(
+  .dashboard-card,
+  .dashboard-nav-shell,
+  .theme-switcher__button,
+  .settings-button__control
+),
+.section-modal__dialog {
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
 }
 
-body.has-wallpaper .shell :is(
+.shell :is(
   .metric-card,
   .timer-card,
   .chart-card,
@@ -124,22 +134,62 @@ body.has-wallpaper .shell :is(
   .speed-insight-card,
   .speed-history,
   .speed-arc-gauge,
-  .ui-popover__content,
-  .ui-chart-tooltip
-) {
-  background: var(--glass-surface-soft);
-  backdrop-filter: blur(var(--glass-blur));
-  -webkit-backdrop-filter: blur(var(--glass-blur));
-}
-
-body.has-wallpaper .speed-history__row:not(.speed-history__row--head) {
-  background: var(--glass-surface-muted);
-  backdrop-filter: blur(var(--glass-blur));
-  -webkit-backdrop-filter: blur(var(--glass-blur));
+  .speed-history__row:not(.speed-history__row--head),
+  .components-grid__head
+),
+:is(.ui-popover__content, .ui-chart-tooltip) {
+  -webkit-backdrop-filter: blur(calc(var(--glass-blur) * 0.8)) saturate(var(--glass-saturate));
+  backdrop-filter: blur(calc(var(--glass-blur) * 0.8)) saturate(var(--glass-saturate));
 }
 
 body.has-wallpaper .speed-arc-gauge.is-running {
   background: color-mix(in srgb, var(--yellow) 14%, var(--glass-surface-soft));
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .shell :is(
+    .dashboard-card,
+    .dashboard-nav-shell,
+    .theme-switcher__button,
+    .settings-button__control,
+    .metric-card,
+    .timer-card,
+    .chart-card,
+    .component-row,
+    .event,
+    .donut-card,
+    .speed-main,
+    .speed-insights,
+    .speed-insight-card,
+    .speed-history,
+    .speed-arc-gauge,
+    .speed-history__row:not(.speed-history__row--head),
+    .components-grid__head,
+    .ui-popover__content,
+    .ui-chart-tooltip
+  ),
+  .section-modal__dialog {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background: var(--surface);
+  }
+
+  .shell :is(
+    .metric-card,
+    .timer-card,
+    .chart-card,
+    .component-row,
+    .event,
+    .donut-card,
+    .speed-main,
+    .speed-insights,
+    .speed-insight-card,
+    .speed-history,
+    .speed-arc-gauge,
+    .speed-history__row:not(.speed-history__row--head)
+  ) {
+    background: var(--surface-soft);
+  }
 }
 
 /* App chrome: loading spinner, wallpaper toggle, theme switcher */
@@ -295,19 +345,13 @@ body.has-wallpaper .horizontal-scroll-fade--right {
 .dashboard-nav-shell {
   border: 1px solid var(--line-soft);
   border-radius: var(--radius);
-  background: var(--surface);
+  background: var(--glass-surface);
   overflow: hidden;
   transition: border-radius 0.15s ease;
 }
 
 .dashboard-nav-anchor.is-stuck .dashboard-nav-shell {
   border-radius: 0 0 var(--radius) var(--radius);
-}
-
-body.has-wallpaper .dashboard-nav-shell {
-  background: var(--glass-surface);
-  backdrop-filter: blur(var(--glass-blur));
-  -webkit-backdrop-filter: blur(var(--glass-blur));
 }
 
 .dashboard-nav {
@@ -408,7 +452,7 @@ body.has-wallpaper .site-footer {
 .panel,
 .timer-card,
 .dashboard-card {
-  background: var(--surface);
+  background: var(--glass-surface);
   border-radius: var(--radius);
 }
 
@@ -685,9 +729,236 @@ h2 {
   line-height: 1.4;
 }
 
+.network-access-modal .section-modal__dialog {
+  width: min(100%, 26rem);
+}
+
+.network-access-modal__form {
+  gap: 14px;
+}
+
+.network-access-modal__status {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-size: 0.74rem;
+  line-height: 1.45;
+}
+
+.network-access-modal__loading {
+  display: flex;
+  justify-content: center;
+  padding: 12px 0;
+}
+
+.network-access-modal__empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.network-access-modal__command {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+
+.network-access-modal__command code {
+  flex: 1;
+  min-width: 0;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.66rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.network-access-modal__copy-icon {
+  width: 0.85rem;
+  height: 0.85rem;
+}
+
+.network-access-modal__manual-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.network-access-modal__manual-row input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.82rem;
+}
+
+.network-access-modal__list {
+  display: grid;
+  gap: 6px;
+  max-height: 14rem;
+  overflow: auto;
+}
+
+.network-access-modal__option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.network-access-modal__option:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.network-access-modal__option--selected {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+}
+
+.network-access-modal__option--pending {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+}
+
+.network-access-modal__option-main {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.network-access-modal__option-meta {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+}
+
+.network-access-modal__option-icon {
+  width: 0.9rem;
+  height: 0.9rem;
+  color: var(--muted);
+}
+
+.network-access-modal__option-icon--check {
+  color: var(--accent);
+}
+
+.network-access-modal__option-title {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.network-access-modal__option-title small {
+  color: var(--faint);
+  font-size: 0.68rem;
+  font-weight: 500;
+}
+
+.network-access-modal__option-detail {
+  color: var(--muted);
+  font-size: 0.74rem;
+}
+
+.network-access-modal__badge {
+  align-self: center;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-size: 0.62rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.network-access-modal__footer {
+  padding-block: 12px;
+  margin-top: 4px;
+}
+
+.network-access-modal__actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  width: 100%;
+}
+
+.network-access-modal__actions .ui-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  min-height: 32px;
+  height: 32px;
+  padding-block: 0;
+  white-space: nowrap;
+}
+
+.network-access-modal__actions .ui-button--ghost {
+  background: var(--surface-muted);
+  color: var(--muted);
+}
+
+.network-access-modal__actions .ui-button--ghost:hover:not(:disabled):not(.is-disabled) {
+  background: var(--surface-soft);
+  color: var(--text);
+}
+
+.network-access-modal__manual {
+  padding-top: 4px;
+  color: var(--muted);
+  font-size: 0.74rem;
+}
+
+.network-access-modal__manual summary {
+  cursor: pointer;
+  color: var(--text);
+  font-weight: 500;
+}
+
+.network-access-modal__field {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0;
+}
+
+.network-access-modal__field input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.82rem;
+}
+
 .timer-card {
   padding: 12px;
-  background: var(--surface-soft);
+  background: var(--glass-surface-soft);
 }
 
 .timer-card span,
@@ -716,7 +987,7 @@ h2 {
 .metric-card {
   padding: 12px;
   border-radius: var(--radius);
-  background: var(--surface-soft);
+  background: var(--glass-surface-soft);
 }
 
 .metric-card span {
@@ -895,7 +1166,7 @@ h2 {
   line-height: 1.2;
   text-transform: uppercase;
   white-space: nowrap;
-  background: var(--surface);
+  background: var(--glass-surface);
 }
 
 .components-grid__actions {
@@ -1217,7 +1488,7 @@ h2 {
 .component-row {
   padding: 10px;
   border-radius: var(--radius);
-  background: var(--surface-soft);
+  background: var(--glass-surface-soft);
 }
 
 body.is-target-reordering {
@@ -1231,7 +1502,7 @@ body.is-target-reordering .target-drag-handle {
 
 .component-row.is-dragging {
   z-index: 2;
-  background: color-mix(in srgb, var(--surface-soft) 72%, transparent);
+  background: color-mix(in srgb, var(--glass-surface-soft) 72%, transparent);
   box-shadow: inset 0 0 0 1px dashed var(--muted);
   opacity: 0.72;
   pointer-events: none;
@@ -2071,7 +2342,7 @@ body.is-target-reordering .target-drag-handle {
   padding: 10px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: var(--surface);
+  background: var(--glass-surface);
   box-shadow: var(--popover-shadow);
 }
 
@@ -2384,7 +2655,7 @@ body.is-target-reordering .target-drag-handle {
   gap: 8px;
   padding: 10px;
   border-radius: var(--radius);
-  background: var(--surface-soft);
+  background: var(--glass-surface-soft);
 }
 
 .chart-wrap {
@@ -2654,19 +2925,19 @@ body.is-target-reordering .target-drag-handle {
   align-items: center;
   padding: 9px 10px;
   border-radius: var(--radius);
-  background: var(--surface-soft);
+  background: var(--glass-surface-soft);
 }
 
 .event--operational {
-  background: color-mix(in srgb, var(--green) 4%, var(--surface-soft));
+  background: color-mix(in srgb, var(--green) 4%, var(--glass-surface-soft));
 }
 
 .event--degraded {
-  background: color-mix(in srgb, var(--yellow) 5%, var(--surface-soft));
+  background: color-mix(in srgb, var(--yellow) 5%, var(--glass-surface-soft));
 }
 
 .event--down {
-  background: color-mix(in srgb, var(--red) 5%, var(--surface-soft));
+  background: color-mix(in srgb, var(--red) 5%, var(--glass-surface-soft));
 }
 
 .event-copy {
@@ -2734,7 +3005,7 @@ body.is-target-reordering .target-drag-handle {
 .speed-insight-card,
 .speed-history {
   border-radius: var(--radius);
-  background: var(--surface-soft);
+  background: var(--glass-surface-soft);
 }
 
 .speed-main {
@@ -3034,7 +3305,7 @@ body.is-target-reordering .target-drag-handle {
   align-items: center;
   padding: 9px 10px;
   border-radius: calc(var(--radius) - 2px);
-  background: var(--surface-muted);
+  background: var(--glass-surface-muted);
   color: var(--muted);
   font-size: 0.72rem;
   font-variant-numeric: tabular-nums;
@@ -3175,15 +3446,21 @@ body.is-target-reordering .target-drag-handle {
 .ui-chart-container {
   width: 100%;
   height: 100%;
+  --vis-donut-central-label-text-color: var(--text);
+  --vis-donut-central-sub-label-text-color: var(--faint);
+  --vis-nested-donut-central-label-text-color: var(--text);
+  --vis-nested-donut-central-sublabel-text-color: var(--faint);
 }
 
-.vis-donut-central-label {
+.ui-chart-container .vis-donut-central-label,
+.ui-chart-container [class*='central-label'] {
   fill: var(--text);
   font-size: 1rem;
   font-weight: 600;
 }
 
-.vis-donut-central-sub-label {
+.ui-chart-container .vis-donut-central-sub-label,
+.ui-chart-container [class*='central-sub-label'] {
   fill: var(--faint);
   font-size: 0.62rem;
 }
@@ -3216,7 +3493,7 @@ body.is-target-reordering .target-drag-handle {
   padding: 8px 10px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: var(--surface);
+  background: var(--glass-surface);
   color: var(--text);
   font-size: 0.72rem;
   box-shadow: var(--popover-shadow);
@@ -3269,7 +3546,7 @@ body.is-target-reordering .target-drag-handle {
   gap: 12px;
   padding: 12px;
   border-radius: var(--radius);
-  background: var(--surface-soft);
+  background: var(--glass-surface-soft);
 }
 
 .donut-card__copy .eyebrow {
@@ -3461,7 +3738,7 @@ body.is-target-reordering .target-drag-handle {
   padding: 0;
   border: 1px solid var(--line);
   border-radius: 999px;
-  background: var(--surface);
+  background: var(--glass-surface);
   color: var(--muted);
   cursor: pointer;
   outline: none;
@@ -3473,7 +3750,7 @@ body.is-target-reordering .target-drag-handle {
 
 .theme-switcher__button:hover,
 .settings-button__control:hover {
-  background: var(--surface-soft);
+  background: var(--glass-surface-soft);
   border-color: var(--line);
   color: var(--text);
 }
@@ -3497,15 +3774,9 @@ body.has-wallpaper :is(.settings-button__control) {
 }
 
 .global-settings-modal .section-modal__dialog {
-  background: color-mix(in srgb, var(--surface) 90%, transparent);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
-}
-
-body.has-wallpaper .global-settings-modal .section-modal__dialog {
   background: var(--glass-surface);
-  backdrop-filter: blur(var(--glass-blur));
-  -webkit-backdrop-filter: blur(var(--glass-blur));
+  height: min(640px, calc(100vh - 48px));
+  max-height: min(640px, calc(100vh - 48px));
 }
 
 .global-settings-modal:has(.settings-panel) .section-modal__dialog {
@@ -3527,6 +3798,50 @@ body.has-wallpaper .global-settings-modal .section-modal__dialog {
   flex-direction: column;
   width: 100%;
   min-height: 0;
+}
+
+.settings-panel__tabs {
+  display: flex;
+  gap: 6px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.settings-panel__tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid transparent;
+  border-radius: calc(var(--radius) - 2px);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.settings-panel__tab-icon {
+  flex-shrink: 0;
+  width: 0.9rem;
+  height: 0.9rem;
+}
+
+.settings-panel__tab:hover {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+.settings-panel__tab.is-active {
+  border-color: var(--line-soft);
+  background: var(--glass-surface-soft);
+  color: var(--text);
+}
+
+.settings-panel__storage {
+  display: grid;
+  gap: 12px;
 }
 
 .settings-panel__body {
@@ -3551,7 +3866,7 @@ body.has-wallpaper .global-settings-modal .section-modal__dialog {
   padding: 16px;
 }
 
-.settings-panel__section:not(:first-child)::before {
+.settings-panel__section:not(:first-child):not(:only-child)::before {
   content: '';
   position: absolute;
   top: 0;
@@ -3766,17 +4081,11 @@ body.has-wallpaper .global-settings-modal .settings-panel__footer {
   max-height: min(88vh, 900px);
   border: 1px solid var(--line-soft);
   border-radius: var(--radius);
-  background: var(--surface);
+  background: var(--glass-surface);
   box-shadow: var(--popover-shadow);
   overflow: hidden;
   transform: translateZ(0);
   backface-visibility: hidden;
-}
-
-body.has-wallpaper .section-modal__dialog {
-  background: var(--glass-surface);
-  backdrop-filter: blur(var(--glass-blur));
-  -webkit-backdrop-filter: blur(var(--glass-blur));
 }
 
 .section-modal__header {

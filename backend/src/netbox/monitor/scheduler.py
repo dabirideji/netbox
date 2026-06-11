@@ -9,10 +9,10 @@ from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from typing import Any
 
 from netbox.alerts.schedule import ALERT_TICK_INTERVAL_MS
-from netbox.checks import run_check
-from netbox.models import PingResult, Target
-from netbox.state import MonitorState
-from netbox.timeutils import now_ms
+from netbox.probes.checks import run_check
+from netbox.core.models import PingResult, Target
+from netbox.monitor.state import MonitorState
+from netbox.util.timeutils import now_ms
 
 CheckRunner = Callable[[Target], PingResult | dict[str, Any]]
 RenderCallback = Callable[[dict[str, Any]], None]
@@ -49,6 +49,7 @@ class TargetScheduler:
                     break
 
                 if current_time - self.last_gateway_sync_ms >= GATEWAY_SYNC_INTERVAL_MS:
+                    self.state.sync_detected_network()
                     self.state.sync_detected_gateway()
                     self.last_gateway_sync_ms = current_time
 

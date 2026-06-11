@@ -193,8 +193,8 @@ def load_storage_config() -> dict[str, Any]:
     return {
         "autoPrune": bool(payload.get("autoPrune", True)),
         "limits": {
-            "maxDatabaseBytes": int(limits.get("maxDatabaseBytes", 52_428_800)),
-            "maxIncidents": int(limits.get("maxIncidents", 10_000)),
+            "maxDatabaseBytes": int(limits.get("maxDatabaseBytes", 5_368_709_120)),
+            "maxIncidents": int(limits.get("maxIncidents", 1_000_000)),
             "maxPingSamples": int(limits.get("maxPingSamples", 100_000)),
             "maxSpeedTests": int(limits.get("maxSpeedTests", 500)),
         },

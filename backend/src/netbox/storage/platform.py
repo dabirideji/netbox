@@ -10,6 +10,7 @@ from netbox.alerts.platform import (
     merge_platform_settings,
     normalize_platform_settings_payload,
 )
+from netbox.util.json_schema import validate_json_schema
 
 
 class PlatformStoreMixin:
@@ -41,6 +42,8 @@ class PlatformStoreMixin:
 
         if not isinstance(updates, dict):
             raise ValueError("platform settings payload must be a JSON object")
+
+        validate_json_schema("platform-settings.patch", updates)
 
         current = self.get_platform_settings()
         merged = merge_platform_settings(current, updates)

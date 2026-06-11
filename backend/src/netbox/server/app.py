@@ -7,7 +7,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from netbox.server.constants import SECURITY_HEADERS
-from netbox.state import MonitorState
+from netbox.monitor.state import MonitorState
 
 
 class StatusServer(ThreadingHTTPServer):

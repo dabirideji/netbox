@@ -7,8 +7,8 @@ import platform
 import re
 import subprocess
 
-from netbox.models import PingResult, Target
-from netbox.timeutils import now_ms
+from netbox.core.models import PingResult, Target
+from netbox.util.timeutils import now_ms
 
 
 def ping_target(target: Target, timeout_ms: int) -> PingResult:

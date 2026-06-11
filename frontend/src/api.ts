@@ -8,6 +8,7 @@ import type { ApiErrorBody } from './types';
 import type {
   EventsResponse,
   HistoryResponse,
+  NetworkInterfacesResponse,
   NetworkRefreshResponse,
   LiveCheckResult,
   SmtpSettingsResponse,
@@ -20,6 +21,9 @@ import type {
   StatusSummary,
   StorageClearResponse,
   StorageClearScope,
+  StorageSettings,
+  StorageSettingsResponse,
+  StorageSettingsUpdateResponse,
   StorageStatsResponse,
   StreamPayload,
   TargetAlertResponse,
@@ -96,15 +100,53 @@ function apiRequestError(action: string, status: number, body?: ApiErrorBody | n
   return new Error(`${action} request failed: ${status}`);
 }
 
-/** Refresh the active network identity, optionally applying a detected Wi-Fi name. */
-export async function refreshNetworkIdentity(wifiName?: string): Promise<NetworkRefreshResponse> {
+/** Detect which macOS app should be enabled in Location Services. */
+export async function fetchLocationClient(): Promise<string | null> {
+  const response = await apiFetch('/api/network/location-client', {
+    headers: { Accept: 'application/json' },
+  });
+
+  await ensureApiOk(response, 'Location client lookup');
+
+  const payload = (await response.json()) as { client?: string | null };
+  return payload.client ?? null;
+}
+
+/** List local network interfaces available for selection. */
+export async function fetchNetworkInterfaces(): Promise<NetworkInterfacesResponse> {
+  const response = await apiFetch('/api/network/interfaces', {
+    headers: { Accept: 'application/json' },
+  });
+
+  await ensureApiOk(response, 'Network interface lookup');
+
+  return response.json() as Promise<NetworkInterfacesResponse>;
+}
+
+export interface NetworkRefreshOptions {
+  wifiName?: string;
+  interface?: string;
+}
+
+/** Refresh the active network identity, optionally applying a detected Wi-Fi name or interface. */
+export async function refreshNetworkIdentity(
+  options: NetworkRefreshOptions | string = {},
+): Promise<NetworkRefreshResponse> {
+  const payload =
+    typeof options === 'string'
+      ? { wifiName: options }
+      : {
+          ...(options.wifiName ? { wifiName: options.wifiName } : {}),
+          ...(options.interface ? { interface: options.interface } : {}),
+        };
+
   const response = await apiFetch('/api/network/refresh', {
     method: 'POST',
     headers: {
       Accept: 'application/json',
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify(wifiName ? { wifiName } : {}),
+    body: JSON.stringify(payload),
   });
 
   await ensureApiOk(response, 'Network refresh');
@@ -376,6 +418,35 @@ export async function patchPreferences(updates: Record<string, unknown>): Promis
   await ensureApiOk(response, 'Preferences update');
 
   return response.json() as Promise<PreferencesResponse>;
+}
+
+/** Fetch persisted storage retention settings. */
+export async function fetchStorageSettings(): Promise<StorageSettingsResponse> {
+  const response = await apiFetch('/api/storage/settings', {
+    headers: { Accept: 'application/json' },
+  });
+
+  await ensureApiOk(response, 'Storage settings');
+
+  return response.json() as Promise<StorageSettingsResponse>;
+}
+
+/** Persist storage retention settings. */
+export async function updateStorageSettings(
+  payload: Partial<StorageSettings> & { limits?: Partial<StorageSettings['limits']> },
+): Promise<StorageSettingsUpdateResponse> {
+  const response = await apiFetch('/api/storage/settings', {
+    method: 'PATCH',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  await ensureApiOk(response, 'Storage settings update');
+
+  return response.json() as Promise<StorageSettingsUpdateResponse>;
 }
 
 /** Fetch configured log storage limits and current usage. */

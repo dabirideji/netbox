@@ -4,9 +4,9 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from netbox.models import MonitorConfig, NetworkIdentity, Target
+from netbox.core.models import MonitorConfig, NetworkIdentity, Target
 from netbox.server import StatusHandler, StatusServer
-from netbox.state import MonitorState
+from netbox.monitor.state import MonitorState
 from netbox.storage import StatusStore
 
 
@@ -46,6 +46,45 @@ def test_status_server_serves_api_and_security_headers(tmp_path: Path) -> None:
 
         assert payload["network"]["ssid"] == "Test"
         assert "default-src 'self'" in csp
+    finally:
+        state.stopping.set()
+        server.shutdown()
+        server.server_close()
+
+
+def test_status_server_serves_openapi_and_swagger_docs(tmp_path: Path) -> None:
+    (tmp_path / "index.html").write_text("<div id='app'></div>")
+    target = Target("gateway", "127.0.0.1", "Loopback", "gateway")
+    state = MonitorState(config(), [target], NetworkIdentity("Test", "Test", "en0", "Wi-Fi"), 0)
+    server = StatusServer(("127.0.0.1", 0), StatusHandler, state, tmp_path)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+
+    try:
+        port = server.server_address[1]
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/openapi.yaml", timeout=3) as response:
+            body = response.read().decode()
+            content_type = response.headers["Content-Type"]
+
+        assert "openapi: 3.0.3" in body
+        assert "Netbox Monitor API" in body
+        assert "yaml" in content_type
+
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/docs", timeout=3) as response:
+            html = response.read().decode()
+            docs_csp = response.headers["Content-Security-Policy"]
+
+        assert "swagger-ui" in html
+        assert "/api/openapi.yaml" in html
+        assert "script-src 'self' 'unsafe-inline'" in docs_csp
+
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{port}/api/docs/swagger-ui/swagger-ui.css",
+            timeout=3,
+        ) as response:
+            css = response.read().decode()
+
+        assert ".swagger-ui" in css
     finally:
         state.stopping.set()
         server.shutdown()
@@ -379,7 +418,7 @@ def test_status_server_serves_and_clears_storage(tmp_path: Path) -> None:
             stats = json.load(response)
 
         assert stats["usage"]["incidents"] == 1
-        assert stats["limits"]["maxIncidents"] == 10_000
+        assert stats["limits"]["maxIncidents"] == 1_000_000
 
         request = urllib.request.Request(
             f"http://127.0.0.1:{port}/api/storage/clear",

@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from netbox.models import MonitorConfig
-from netbox.responses import terminal_color_name, terminal_symbol
-from netbox.timeutils import format_clock, format_duration
+from netbox.core.models import MonitorConfig
+from netbox.core.responses import terminal_color_name, terminal_symbol
+from netbox.util.timeutils import format_clock, format_duration
 
 
 def render_dashboard(summary: dict[str, Any], config: MonitorConfig) -> None:

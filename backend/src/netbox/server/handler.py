@@ -6,11 +6,13 @@ import json
 import mimetypes
 import queue
 from http.server import BaseHTTPRequestHandler
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-from netbox.responses import HttpStatus, api_error_body, api_error_code_for_message
+from netbox.core.responses import HttpStatus, api_error_body, api_error_code_for_message
 from netbox.server.app import StatusServer
+from netbox.server.api_docs import DOCS_CSP, dispatch_api_docs_get
 from netbox.server.dispatch import dispatch_delete, dispatch_get, dispatch_patch, dispatch_post
 from netbox.server.static_files import is_within
 
@@ -31,6 +33,9 @@ class StatusHandler(BaseHTTPRequestHandler):
         """Route GET requests to API endpoints, SSE, or static assets."""
 
         parsed_url = urlparse(self.path)
+
+        if dispatch_api_docs_get(self, parsed_url):
+            return
 
         try:
             if dispatch_get(self, parsed_url):
@@ -161,6 +166,22 @@ class StatusHandler(BaseHTTPRequestHandler):
         finally:
             self.app_server.state.remove_client(client)
 
+    def serve_path_file(self, path: Path, content_type: str, *, docs_csp: bool = False) -> None:
+        """Serve one file from disk with standard security headers."""
+
+        if not path.is_file():
+            self.send_error(HttpStatus.NOT_FOUND, "Not found")
+            return
+
+        body = path.read_bytes()
+        self.send_response(HttpStatus.OK)
+        self.add_default_headers(docs_csp=docs_csp)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
     def serve_static(self, route: str) -> None:
         """Serve frontend assets while preventing path traversal."""
 
@@ -183,10 +204,13 @@ class StatusHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def add_default_headers(self) -> None:
+    def add_default_headers(self, *, docs_csp: bool = False) -> None:
         """Attach conservative browser security headers to every response."""
 
         for header, value in self.app_server.security_headers.items():
+            if docs_csp and header == "Content-Security-Policy":
+                self.send_header(header, DOCS_CSP)
+                continue
             self.send_header(header, value)
 
     def log_message(self, _format: str, *_args: Any) -> None:

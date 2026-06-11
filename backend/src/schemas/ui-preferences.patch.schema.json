@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://netbox.local/schemas/ui-preferences.patch.schema.json",
+  "title": "UI preferences patch",
+  "type": "object",
+  "additionalProperties": false,
+  "minProperties": 1,
+  "properties": {
+    "dashboard_sections_collapsed": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "hero": { "type": "boolean" },
+        "summary": { "type": "boolean" },
+        "timeline": { "type": "boolean" },
+        "targets": { "type": "boolean" },
+        "liveChecks": { "type": "boolean" },
+        "speedTest": { "type": "boolean" },
+        "incidentLog": { "type": "boolean" },
+        "systemRatios": { "type": "boolean" }
+      }
+    },
+    "timeline_range": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["from", "to"],
+      "properties": {
+        "from": { "type": "string", "maxLength": 64 },
+        "to": { "type": "string", "maxLength": 64 }
+      }
+    },
+    "event_page": { "type": "integer", "minimum": 0, "maximum": 100000 },
+    "speed_test_page": { "type": "integer", "minimum": 0, "maximum": 100000 },
+    "live_checks_page": { "type": "integer", "minimum": 0, "maximum": 100000 },
+    "targets_page": { "type": "integer", "minimum": 0, "maximum": 100000 },
+    "target_groups": {
+      "type": "array",
+      "maxItems": 100,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 64
+      }
+    },
+    "target_environments": {
+      "type": "array",
+      "maxItems": 100,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 64
+      }
+    }
+  }
+}

@@ -5,9 +5,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from urllib.parse import ParseResult
 
-from netbox.responses import HttpStatus
+from netbox.core.responses import HttpStatus
 from netbox.server.query import parse_query, parse_target_route
 from netbox.server.wallpaper import fetch_wallpaper
+from netbox.util.macos import detect_location_client
 
 if TYPE_CHECKING:
     from netbox.server.handler import StatusHandler
@@ -80,6 +81,14 @@ def dispatch_get(handler: StatusHandler, parsed_url: ParseResult) -> bool:
         )
         return True
 
+    if route == "/api/network/location-client":
+        handler.write_json({"client": detect_location_client()})
+        return True
+
+    if route == "/api/network/interfaces":
+        handler.write_json(state.list_network_interfaces())
+        return True
+
     if route == "/api/preferences":
         handler.write_json(state.preferences())
         return True
@@ -94,6 +103,10 @@ def dispatch_get(handler: StatusHandler, parsed_url: ParseResult) -> bool:
 
     if route == "/api/storage":
         handler.write_json(state.storage_stats())
+        return True
+
+    if route == "/api/storage/settings":
+        handler.write_json(state.storage_settings())
         return True
 
     if route == "/api/wallpaper":
@@ -127,6 +140,7 @@ def dispatch_post(handler: StatusHandler, route: str) -> bool:
 
     if route == "/api/network/refresh":
         wifi_name = None
+        interface = None
         content_length = int(handler.headers.get("Content-Length", "0") or "0")
         if content_length > 0:
             payload = handler.read_json_body()
@@ -135,7 +149,15 @@ def dispatch_post(handler: StatusHandler, route: str) -> bool:
                 if not isinstance(raw_wifi_name, str):
                     raise ValueError("wifiName must be a string")
                 wifi_name = raw_wifi_name
-        handler.write_json(state.refresh_network_identity(wifi_name), status=HttpStatus.OK)
+            raw_interface = payload.get("interface")
+            if raw_interface is not None:
+                if not isinstance(raw_interface, str):
+                    raise ValueError("interface must be a string")
+                interface = raw_interface
+        handler.write_json(
+            state.refresh_network_identity(wifi_name, interface),
+            status=HttpStatus.OK,
+        )
         return True
 
     if route == "/api/storage/clear":
@@ -179,6 +201,10 @@ def dispatch_patch(handler: StatusHandler, route: str) -> bool:
 
     if route == "/api/settings/platform":
         handler.write_json(state.update_platform_settings(handler.read_json_body()))
+        return True
+
+    if route == "/api/storage/settings":
+        handler.write_json(state.update_storage_settings(handler.read_json_body()), status=HttpStatus.OK)
         return True
 
     if target_route and len(target_route) == 2 and target_route[1] == "alert":

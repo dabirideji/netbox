@@ -6,7 +6,7 @@ from typing import Any
 
 from netbox.alerts.models import DEFAULT_TARGET_ALERT, normalize_smtp_payload, normalize_target_alert_payload
 from netbox.alerts.platform import platform_alert_defaults
-from netbox.crypto import decrypt_secret, encrypt_secret
+from netbox.util.crypto import decrypt_secret, encrypt_secret
 
 
 class AlertStoreMixin:

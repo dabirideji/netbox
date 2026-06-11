@@ -7,6 +7,7 @@ import { useNetworkAccess } from '../../composables/useNetworkAccess';
 import { formatDuration, networkLabel } from '../../format';
 import type { NetworkIdentity, Status } from '../../types';
 import DashboardSectionCard from './DashboardSectionCard.vue';
+import NetworkAccessModal from './NetworkAccessModal.vue';
 
 const props = defineProps<{
   appName: string;
@@ -19,9 +20,19 @@ const props = defineProps<{
   endsAt?: number | null;
 }>();
 
-const { isHidden, isRefreshing, statusMessage, requestNetworkAccess } = useNetworkAccess(
-  toRef(props, 'network'),
-);
+const {
+  isRefreshing,
+  statusMessage,
+  modalOpen,
+  activeInterface,
+  interfaces,
+  interfacesLoading,
+  closeModal,
+  openNetworkModal,
+  refreshNetworkList,
+  selectNetworkInterface,
+  saveManualNetworkName,
+} = useNetworkAccess(toRef(props, 'network'));
 
 const now = ref(Date.now());
 let timer: number | undefined;
@@ -59,19 +70,18 @@ onUnmounted(() => {
         <div class="network-name-row">
           <p class="network-name">{{ networkLabel(network) }}</p>
           <Button
-            v-if="isHidden"
             type="button"
             variant="ghost"
             size="xs"
             class="network-name-row__action"
             :disabled="isRefreshing"
-            @click="requestNetworkAccess"
+            @click="openNetworkModal"
           >
             <PhSpinner v-if="isRefreshing" class="network-name-row__spinner" weight="bold" aria-hidden="true" />
-            {{ isRefreshing ? 'Requesting access' : 'Show Wi‑Fi name' }}
+            {{ isRefreshing ? 'Loading…' : 'Choose network' }}
           </Button>
         </div>
-        <p v-if="statusMessage" class="network-name-hint">{{ statusMessage }}</p>
+        <p v-if="statusMessage && !modalOpen" class="network-name-hint">{{ statusMessage }}</p>
       </div>
       <div class="timer-card">
         <span>{{ isIndefinite ? 'Uptime' : 'Run window' }}</span>
@@ -80,4 +90,17 @@ onUnmounted(() => {
       </div>
     </div>
   </DashboardSectionCard>
+
+  <NetworkAccessModal
+    :open="modalOpen"
+    :busy="isRefreshing"
+    :status-message="statusMessage"
+    :interfaces="interfaces"
+    :interfaces-loading="interfacesLoading"
+    :active-interface="activeInterface"
+    @close="closeModal"
+    @refresh="refreshNetworkList"
+    @select-interface="selectNetworkInterface"
+    @save-manual="saveManualNetworkName"
+  />
 </template>

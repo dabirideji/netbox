@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 import threading
 from pathlib import Path
@@ -14,7 +15,9 @@ from netbox.storage.migrations import (
     migrate_monitor_targets_is_favorite,
     migrate_monitor_targets_sort_order,
     migrate_platform_settings,
+    migrate_storage_settings,
 )
+from netbox.storage.settings import merge_storage_settings
 from netbox.storage.schema import SCHEMA
 
 
@@ -50,6 +53,17 @@ class StoreBase:
             migrate_alert_tables(self.connection)
             migrate_alert_dispatch_state(self.connection)
             migrate_platform_settings(self.connection)
+            migrate_storage_settings(self.connection)
+            persisted = self.connection.execute(
+                "SELECT data FROM storage_settings WHERE id = 1",
+            ).fetchone()
+            if persisted is not None:
+                try:
+                    data = json.loads(persisted["data"])
+                    if isinstance(data, dict):
+                        self.storage_config = merge_storage_settings(self.storage_config, data)
+                except json.JSONDecodeError:
+                    pass
             self.connection.commit()
 
     def database_bytes(self) -> int:
