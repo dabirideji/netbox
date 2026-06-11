@@ -5,51 +5,92 @@
     <title>Netbox</title>
     <style>
       :root {
-        color-scheme: light dark;
-        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        color-scheme: dark;
+        --bg: #09090b;
+        --surface: #111113;
+        --line: rgb(255 255 255 / 0.08);
+        --text: #f4f4f5;
+        --muted: #a1a1aa;
+        --radius: 10px;
+        font-family:
+          Inter,
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          'Segoe UI',
+          sans-serif;
+        font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
       }
 
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
       body {
         margin: 0;
-        min-height: 100vh;
-        display: grid;
-        place-items: center;
-        background: radial-gradient(circle at top, #1f2937, #0f172a);
-        color: #f8fafc;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: transparent;
+        -webkit-user-select: none;
+        user-select: none;
       }
 
-      main {
-        text-align: center;
-        padding: 2rem;
+      .splash {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        width: 100%;
+        height: 100%;
+        padding: 16px 18px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        background: var(--surface);
+        box-shadow: 0 16px 36px rgb(0 0 0 / 0.42);
+        -webkit-app-region: drag;
       }
 
-      .logo {
-        display: block;
-        width: 48px;
-        height: 48px;
-        margin: 0 auto 1rem;
+      .splash__logo {
+        flex-shrink: 0;
+        width: 36px;
+        height: 36px;
         object-fit: contain;
       }
 
-      h1 {
-        margin: 0 0 0.5rem;
-        font-size: 1.5rem;
+      .splash__copy {
+        min-width: 0;
+        flex: 1;
+      }
+
+      .splash__title {
+        margin: 0 0 4px;
+        font-size: 15px;
         font-weight: 600;
+        letter-spacing: -0.02em;
+        color: var(--text);
+        line-height: 1.2;
       }
 
-      p {
+      .splash__status {
+        display: flex;
+        align-items: center;
+        gap: 8px;
         margin: 0;
-        opacity: 0.8;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.3;
       }
 
-      .spinner {
-        width: 2rem;
-        height: 2rem;
-        margin: 1.5rem auto 0;
-        border: 3px solid rgba(248, 250, 252, 0.2);
-        border-top-color: #38bdf8;
+      .splash__spinner {
+        flex-shrink: 0;
+        width: 12px;
+        height: 12px;
+        border: 2px solid rgb(255 255 255 / 0.12);
+        border-top-color: var(--text);
         border-radius: 50%;
-        animation: spin 0.8s linear infinite;
+        animation: spin 0.7s linear infinite;
       }
 
       @keyframes spin {
@@ -60,11 +101,15 @@
     </style>
   </head>
   <body>
-    <main>
-      <img class="logo" src="logo.png" width="48" height="48" alt="" />
-      <h1>Netbox</h1>
-      <p>Starting the local monitor…</p>
-      <div class="spinner" aria-hidden="true"></div>
-    </main>
+    <div class="splash" role="status" aria-live="polite" aria-label="Netbox is starting">
+      <img class="splash__logo" src="logo.png" width="36" height="36" alt="" />
+      <div class="splash__copy">
+        <p class="splash__title">Netbox</p>
+        <p class="splash__status">
+          <span class="splash__spinner" aria-hidden="true"></span>
+          <span>Starting local monitor</span>
+        </p>
+      </div>
+    </div>
   </body>
 </html>

@@ -7,6 +7,7 @@ SRC="$ROOT/icons"
 BUILD="$ROOT/electron/build"
 PUBLIC="$ROOT/frontend/public/icons"
 RESOURCES="$ROOT/electron/resources"
+RUNTIME_ICONS="$RESOURCES/icons"
 
 if [ ! -f "$SRC/black.png" ] || [ ! -f "$SRC/white.png" ]; then
   printf 'Expected icons/black.png and icons/white.png\n' >&2
@@ -36,7 +37,7 @@ resize_height() {
   "${MAGICK[@]}" "$input" -resize "x${height}" "$output"
 }
 
-mkdir -p "$PUBLIC" "$BUILD" "$RESOURCES"
+mkdir -p "$PUBLIC" "$BUILD" "$RESOURCES" "$RUNTIME_ICONS"
 
 cp "$SRC/black.png" "$PUBLIC/black.png"
 cp "$SRC/white.png" "$PUBLIC/white.png"
@@ -47,7 +48,12 @@ pad_square "$SRC/black.png" 1024 "$BUILD/icon.png"
 resize_height "$SRC/black.png" 22 "$BUILD/iconTemplate.png"
 pad_square "$SRC/black.png" 256 "$BUILD/icon-tray.png"
 "${MAGICK[@]}" "$SRC/black.png" -define icon:auto-resize=16,24,32,48,64,128,256 "$BUILD/icon.ico"
-resize_height "$SRC/white.png" 48 "$RESOURCES/logo.png"
+resize_height "$SRC/white.png" 72 "$RESOURCES/logo.png"
+
+cp "$BUILD/icon.png" "$RUNTIME_ICONS/icon.png"
+cp "$BUILD/iconTemplate.png" "$RUNTIME_ICONS/iconTemplate.png"
+cp "$BUILD/icon-tray.png" "$RUNTIME_ICONS/icon-tray.png"
+cp "$BUILD/icon.ico" "$RUNTIME_ICONS/icon.ico"
 
 if [ "$(uname -s)" = "Darwin" ] && command -v iconutil >/dev/null 2>&1; then
   iconset="$(mktemp -d)/icon.iconset"
@@ -59,8 +65,10 @@ if [ "$(uname -s)" = "Darwin" ] && command -v iconutil >/dev/null 2>&1; then
     fi
   done
   iconutil -c icns "$iconset" -o "$BUILD/icon.icns"
+  cp "$BUILD/icon.icns" "$RUNTIME_ICONS/icon.icns"
 fi
 
 printf 'Generated web icons in frontend/public/icons/\n'
-printf 'Generated Electron icons in electron/build/\n'
+printf 'Generated Electron build icons in electron/build/\n'
+printf 'Generated packaged runtime icons in electron/resources/icons/\n'
 printf 'Generated splash logo in electron/resources/logo.png\n'

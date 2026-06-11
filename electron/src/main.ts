@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, Tray, dialog, ipcMain, nativeImage, shell } from 'electron';
+import { app, BrowserWindow, Menu, Tray, dialog, ipcMain, nativeImage, screen, shell } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { autoUpdater } from 'electron-updater';
@@ -44,21 +44,21 @@ function loadingPagePath(): string {
   return path.join(__dirname, '..', 'resources', 'loading.html');
 }
 
-function buildIconPath(iconName: string): string {
-  return path.join(__dirname, '..', 'build', iconName);
+function runtimeIconPath(iconName: string): string {
+  return path.join(__dirname, '..', 'resources', 'icons', iconName);
 }
 
 function appIconPath(): string {
-  if (process.platform === 'darwin' && fs.existsSync(buildIconPath('icon.icns'))) {
-    return buildIconPath('icon.icns');
+  if (process.platform === 'darwin' && fs.existsSync(runtimeIconPath('icon.icns'))) {
+    return runtimeIconPath('icon.icns');
   }
-  return buildIconPath('icon.png');
+  return runtimeIconPath('icon.png');
 }
 
 function trayIconPath(): string {
   const iconName =
     process.platform === 'win32' ? 'icon.ico' : process.platform === 'darwin' ? 'iconTemplate.png' : 'icon-tray.png';
-  return buildIconPath(iconName);
+  return runtimeIconPath(iconName);
 }
 
 function createTrayIcon() {
@@ -70,7 +70,7 @@ function createTrayIcon() {
     }
     return image;
   }
-  return nativeImage.createFromPath(buildIconPath('icon.png'));
+  return nativeImage.createFromPath(runtimeIconPath('icon.png'));
 }
 
 function applyLoginItemSettings(): void {
@@ -153,15 +153,19 @@ function createTray(): void {
 }
 
 function createSplashWindow(): void {
+  const useFramelessSplash = process.platform !== 'linux';
+
   splashWindow = new BrowserWindow({
-    width: 360,
-    height: 260,
+    width: 300,
+    height: 112,
     resizable: false,
     minimizable: false,
     maximizable: false,
     fullscreenable: false,
-    show: true,
-    frame: true,
+    show: false,
+    frame: !useFramelessSplash,
+    transparent: useFramelessSplash,
+    hasShadow: useFramelessSplash,
     title: APP_NAME,
     icon: appIconPath(),
     autoHideMenuBar: true,
@@ -169,7 +173,20 @@ function createSplashWindow(): void {
       sandbox: true,
     },
   });
+
   splashWindow.loadFile(loadingPagePath());
+  splashWindow.once('ready-to-show', () => {
+    if (!splashWindow || splashWindow.isDestroyed()) {
+      return;
+    }
+
+    const { width, height } = splashWindow.getBounds();
+    const { workArea } = screen.getPrimaryDisplay();
+    const x = Math.round(workArea.x + (workArea.width - width) / 2);
+    const y = Math.round(workArea.y + (workArea.height - height) / 2);
+    splashWindow.setPosition(x, y);
+    splashWindow.show();
+  });
 }
 
 function createMainWindow(origin: string): void {

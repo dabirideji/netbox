@@ -109,4 +109,4 @@ See [`docs/ELECTRON.md`](docs/ELECTRON.md) for packaging details and code-signin
 
 ## Authorship
 
-Roughly **5%** of this codebase was written by [Marvelous Solomon](https://github.com/solomonmarvel97). The remaining **95%** was written by **Cursor Composer** in under 6 hours.
+Architecture and product direction by [Marvelous Solomon](https://github.com/solomonmarvel97). Implementation was produced primarily through AI-assisted development.
