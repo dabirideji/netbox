@@ -7,7 +7,7 @@ from urllib.parse import ParseResult
 
 from netbox.core.responses import HttpStatus
 from netbox.server.query import parse_query, parse_target_route
-from netbox.server.wallpaper import fetch_wallpaper
+from netbox.server.wallpaper import fetch_wallpaper, parse_wallpaper_category_query, wallpaper_categories
 from netbox.util.macos import detect_location_client
 
 if TYPE_CHECKING:
@@ -109,8 +109,12 @@ def dispatch_get(handler: StatusHandler, parsed_url: ParseResult) -> bool:
         handler.write_json(state.storage_settings())
         return True
 
+    if route == "/api/wallpaper/categories":
+        handler.write_json({"categories": wallpaper_categories()})
+        return True
+
     if route == "/api/wallpaper":
-        handler.write_json(fetch_wallpaper())
+        handler.write_json(fetch_wallpaper(parse_wallpaper_category_query(parsed_url.query)))
         return True
 
     return False

@@ -1,6 +1,13 @@
+import {
+  DEFAULT_WALLPAPER_CATEGORY,
+  normalizeWallpaperCategoryId,
+  type WallpaperCategoryId,
+} from './wallpaperCategories';
+
 export const WALLPAPER_ENABLED_STORAGE_KEY = 'netbox-wallpaper-enabled';
 export const WALLPAPER_URL_STORAGE_KEY = 'netbox-wallpaper-url-nature-hd';
 export const WALLPAPER_INTERVAL_MS_STORAGE_KEY = 'netbox-wallpaper-interval-ms';
+export const WALLPAPER_CATEGORY_STORAGE_KEY = 'netbox-wallpaper-category';
 
 export const DEFAULT_WALLPAPER_INTERVAL_MS = 30 * 60_000;
 export const MIN_WALLPAPER_INTERVAL_MS = 5 * 60_000;
@@ -36,6 +43,25 @@ export function setWallpaperIntervalMs(ms: number): void {
   }
 
   localStorage.setItem(WALLPAPER_INTERVAL_MS_STORAGE_KEY, String(clampWallpaperIntervalMs(ms)));
+}
+
+export function getWallpaperCategory(): WallpaperCategoryId {
+  if (typeof window === 'undefined') {
+    return DEFAULT_WALLPAPER_CATEGORY;
+  }
+
+  return normalizeWallpaperCategoryId(localStorage.getItem(WALLPAPER_CATEGORY_STORAGE_KEY));
+}
+
+export function setWallpaperCategory(category: WallpaperCategoryId): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  localStorage.setItem(
+    WALLPAPER_CATEGORY_STORAGE_KEY,
+    normalizeWallpaperCategoryId(category),
+  );
 }
 
 export function isWallpaperEnabled(): boolean {

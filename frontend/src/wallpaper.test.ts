@@ -1,15 +1,18 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   DEFAULT_WALLPAPER_INTERVAL_MS,
+  WALLPAPER_CATEGORY_STORAGE_KEY,
   WALLPAPER_ENABLED_STORAGE_KEY,
   WALLPAPER_INTERVAL_MS_STORAGE_KEY,
   WALLPAPER_URL_STORAGE_KEY,
   applyWallpaperUrl,
   clampWallpaperIntervalMs,
   clearWallpaper,
+  getWallpaperCategory,
   getWallpaperIntervalMs,
   initWallpaperFromStorage,
   isWallpaperEnabled,
+  setWallpaperCategory,
   setWallpaperEnabled,
   setWallpaperIntervalMs,
 } from './wallpaper';
@@ -37,6 +40,14 @@ describe('wallpaper', () => {
 
     expect(document.body.classList.contains('has-wallpaper')).toBe(false);
     expect(document.body.style.getPropertyValue('--wallpaper-image')).toBe('');
+  });
+
+  it('tracks wallpaper category in localStorage', () => {
+    expect(getWallpaperCategory()).toBe('nature');
+
+    setWallpaperCategory('ocean');
+    expect(localStorage.getItem(WALLPAPER_CATEGORY_STORAGE_KEY)).toBe('ocean');
+    expect(getWallpaperCategory()).toBe('ocean');
   });
 
   it('tracks wallpaper rotation interval in localStorage', () => {

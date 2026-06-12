@@ -24,6 +24,10 @@ import {
   MAX_WALLPAPER_INTERVAL_MS,
   MIN_WALLPAPER_INTERVAL_MS,
 } from '../wallpaper';
+import {
+  normalizeWallpaperCategoryId,
+  WALLPAPER_CATEGORIES,
+} from '../wallpaperCategories';
 
 type SettingsTab = 'alerts' | 'email' | 'storage' | 'wallpaper';
 
@@ -36,7 +40,7 @@ const activeTab = ref<SettingsTab>('alerts');
 
 const { isOpen, platformAlerts, isLoading, isSaving, error, message } = storeToRefs(settingsStore);
 const { isSaving: isSavingStorage, error: storageError } = storeToRefs(storageStore);
-const { enabled: wallpaperEnabled, loading: wallpaperLoading, error: wallpaperError } =
+const { enabled: wallpaperEnabled, category: wallpaperCategory, loading: wallpaperLoading, error: wallpaperError } =
   storeToRefs(wallpaperStore);
 
 const cooldownMinutes = computed({
@@ -49,6 +53,14 @@ const cooldownMinutes = computed({
 
 const minWallpaperIntervalMinutes = Math.round(MIN_WALLPAPER_INTERVAL_MS / 60_000);
 const maxWallpaperIntervalMinutes = Math.round(MAX_WALLPAPER_INTERVAL_MS / 60_000);
+
+function onWallpaperCategoryChange(value: string): void {
+  if (wallpaperLoading.value || wallpaperCategory.value === value) {
+    return;
+  }
+
+  void wallpaperStore.setCategory(normalizeWallpaperCategoryId(value));
+}
 
 const wallpaperIntervalMinutes = computed({
   get: () => Math.round(wallpaperStore.intervalMs / 60_000),
@@ -254,7 +266,7 @@ const isFooterSaving = computed(() =>
                 <div class="settings-panel__section-head">
                   <h3>Pexels wallpaper</h3>
                   <p class="settings-panel__hint">
-                    Nature photos as a fixed dashboard background. Requires `PEXELS_API_KEY` on the server.
+                    Landscape photos as a fixed dashboard background.
                   </p>
                 </div>
 
@@ -270,6 +282,32 @@ const isFooterSaving = computed(() =>
                     :disabled="wallpaperLoading"
                     @update:model-value="wallpaperStore.setEnabled"
                   />
+                </div>
+
+                <div v-if="wallpaperEnabled" class="settings-panel__field">
+                  <Label>Photo category</Label>
+                  <div
+                    class="wallpaper-category-tabs"
+                    role="tablist"
+                    aria-label="Wallpaper photo categories"
+                  >
+                    <button
+                      v-for="option in WALLPAPER_CATEGORIES"
+                      :key="option.id"
+                      type="button"
+                      class="wallpaper-category-tabs__button"
+                      :class="{ 'is-active': wallpaperCategory === option.id }"
+                      role="tab"
+                      :aria-selected="wallpaperCategory === option.id"
+                      :disabled="wallpaperLoading"
+                      @click="onWallpaperCategoryChange(option.id)"
+                    >
+                      {{ option.label }}
+                    </button>
+                  </div>
+                  <p class="settings-panel__hint">
+                    Pexels searches rotate within the selected category.
+                  </p>
                 </div>
 
                 <label v-if="wallpaperEnabled" class="settings-panel__field">

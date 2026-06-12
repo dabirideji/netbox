@@ -390,6 +390,7 @@ export interface WallpaperResponse {
   url: string;
   photographer: string;
   photoUrl: string;
+  category?: string;
 }
 
 export interface StorageClearResponse {

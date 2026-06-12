@@ -581,8 +581,14 @@ export async function updateTargetAlert(
 }
 
 /** Fetch a curated Pexels wallpaper through the backend proxy. */
-export async function fetchWallpaper(): Promise<WallpaperResponse> {
-  const response = await apiFetch('/api/wallpaper', {
+export async function fetchWallpaper(category?: string): Promise<WallpaperResponse> {
+  const searchParams = new URLSearchParams();
+  if (category) {
+    searchParams.set('category', category);
+  }
+
+  const query = searchParams.toString();
+  const response = await apiFetch(`/api/wallpaper${query ? `?${query}` : ''}`, {
     headers: { Accept: 'application/json' },
   });
 

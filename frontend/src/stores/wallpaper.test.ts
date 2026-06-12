@@ -16,8 +16,8 @@ describe('useWallpaperStore', () => {
     vi.mocked(fetchWallpaper).mockResolvedValue({
       url: 'https://images.pexels.com/photos/example.jpeg',
       photographer: 'Test',
-      photographerUrl: 'https://example.com',
-      sourceUrl: 'https://example.com/photo',
+      photoUrl: 'https://example.com/photo',
+      category: 'nature',
     });
   });
 
@@ -51,5 +51,15 @@ describe('useWallpaperStore', () => {
 
     await vi.advanceTimersByTimeAsync(10 * 60_000);
     expect(fetchWallpaper).toHaveBeenCalledTimes(2);
+  });
+
+  it('fetches wallpaper for the selected category', async () => {
+    const store = useWallpaperStore();
+
+    await store.setEnabled(true);
+    await store.setCategory('desert');
+
+    expect(store.category).toBe('desert');
+    expect(fetchWallpaper).toHaveBeenLastCalledWith('desert');
   });
 });
