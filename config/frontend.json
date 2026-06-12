@@ -1,6 +1,7 @@
 {
   "app": {
-    "name": "Netbox"
+    "name": "Netbox",
+    "openSource": true
   },
   "devServer": {
     "host": "127.0.0.1",

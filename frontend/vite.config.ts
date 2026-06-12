@@ -5,10 +5,12 @@ import { defineConfig } from 'vitest/config';
 import { loadEnv } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import { vueusePureAnnotationFix } from './vite/vueusePureAnnotationFix';
+import { readBuildMeta } from './vite/buildMeta';
 
 interface FrontendConfig {
   app?: {
     name?: string;
+    openSource?: boolean;
   };
   devServer?: {
     host?: string;
@@ -39,6 +41,7 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, projectRoot, '');
   const frontendConfig = readFrontendConfig();
   const appName = env.VITE_NETBOX_APP_NAME || frontendConfig.app?.name || 'Netbox';
+  const buildMeta = readBuildMeta(projectRoot, frontendConfig.app ?? {});
   const host = env.NETBOX_FRONTEND_HOST || env.NETBOX_HOST || frontendConfig.devServer?.host || '127.0.0.1';
   const port = numberSetting(env.NETBOX_FRONTEND_PORT, frontendConfig.devServer?.port ?? 5177);
   const backendHost = env.NETBOX_HOST || frontendConfig.api?.backendHost || '127.0.0.1';
@@ -50,6 +53,13 @@ export default defineConfig(({ mode }) => {
     plugins: [vue(), vueusePureAnnotationFix()],
     define: {
       __NETBOX_APP_NAME__: JSON.stringify(appName),
+      __NETBOX_APP_VERSION__: JSON.stringify(buildMeta.version),
+      __NETBOX_OPEN_SOURCE__: buildMeta.openSource,
+      __NETBOX_APP_ID__: JSON.stringify(buildMeta.appId),
+      __NETBOX_BUILD_COPYRIGHT__: JSON.stringify(buildMeta.copyright),
+      __NETBOX_BUILDER_NAME__: JSON.stringify(buildMeta.builderName),
+      __NETBOX_BUILDER_VERSION__: JSON.stringify(buildMeta.builderVersion),
+      __NETBOX_BUILD_AUTHOR__: JSON.stringify(buildMeta.author),
     },
     optimizeDeps: {
       include: ['@unovis/ts', '@unovis/vue'],

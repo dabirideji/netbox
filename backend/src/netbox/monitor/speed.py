@@ -35,6 +35,10 @@ def normalize_speed_test(payload: dict[str, Any]) -> dict[str, Any]:
         "serverLocation": optional_text(payload.get("serverLocation"), "serverLocation", MAX_LABEL_LENGTH),
         "serverHost": optional_text(payload.get("serverHost"), "serverHost", MAX_LABEL_LENGTH),
         "error": optional_text(payload.get("error"), "error", MAX_ERROR_LENGTH),
+        "networkName": optional_text(payload.get("networkName"), "networkName", MAX_LABEL_LENGTH),
+        "networkSsid": optional_text(payload.get("networkSsid"), "networkSsid", MAX_LABEL_LENGTH),
+        "networkInterface": optional_text(payload.get("networkInterface"), "networkInterface", 32),
+        "networkService": optional_text(payload.get("networkService"), "networkService", 40),
     }
 
 

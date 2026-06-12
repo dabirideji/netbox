@@ -16,6 +16,7 @@ from netbox.storage.migrations import (
     migrate_monitor_targets_is_favorite,
     migrate_monitor_targets_sort_order,
     migrate_platform_settings,
+    migrate_speed_tests_network,
     migrate_storage_settings,
 )
 from netbox.storage.settings import merge_storage_settings
@@ -37,6 +38,7 @@ class StoreBase:
         if not is_memory:
             self.path.parent.mkdir(parents=True, exist_ok=True)
         self.lock = threading.RLock()
+        self._closed = False
         self.connection = self._open_connection(is_memory)
         self._initialize_connection(is_memory)
 
@@ -79,6 +81,7 @@ class StoreBase:
                     migrate_alert_dispatch_state(self.connection)
                     migrate_platform_settings(self.connection)
                     migrate_storage_settings(self.connection)
+                    migrate_speed_tests_network(self.connection)
                     persisted = self.connection.execute(
                         "SELECT data FROM storage_settings WHERE id = 1",
                     ).fetchone()
@@ -143,8 +146,17 @@ class StoreBase:
             return 0
         return self._delete_oldest_rows(table, order_by, total - max_rows)
 
+    @property
+    def closed(self) -> bool:
+        """Return whether the store connection has been closed."""
+
+        return self._closed
+
     def close(self) -> None:
         """Close the underlying SQLite connection."""
 
         with self.lock:
+            if self._closed:
+                return
+            self._closed = True
             self.connection.close()

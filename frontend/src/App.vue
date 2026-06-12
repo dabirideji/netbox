@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { PhGithubLogo } from '@phosphor-icons/vue';
 import { computed, onMounted, onUnmounted } from 'vue';
 import { storeToRefs } from 'pinia';
 import { subscribeStatus } from './api';
@@ -192,6 +191,7 @@ onUnmounted(() => {
 
     <LiveChecksSection
       :targets="summary?.targets ?? []"
+      :network-devices="summary?.networkDevices ?? []"
       :connection-state="connectionState"
       :page="liveChecksPage"
       :page-size="LIVE_CHECKS_PAGE_SIZE"
@@ -231,19 +231,4 @@ onUnmounted(() => {
       :is-range-active="isRangeActive"
     />
   </main>
-  <footer class="site-footer">
-    <p>
-      Built on Vibes by
-      <a href="https://solomonmarvel.com" target="_blank" rel="noopener noreferrer">Marvelous Solomon</a>
-      <a
-        class="site-footer__github"
-        href="https://github.com/solomonmarvel97"
-        target="_blank"
-        rel="noopener noreferrer"
-        aria-label="Marvelous Solomon on GitHub"
-      >
-        <PhGithubLogo class="site-footer__github-icon" weight="fill" aria-hidden="true" />
-      </a>
-    </p>
-  </footer>
 </template>

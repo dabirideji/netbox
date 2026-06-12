@@ -23,6 +23,7 @@ from netbox.probes.network import (
     network_identity_should_sync,
 )
 from netbox.core.responses import monitor_status_severity
+from netbox.monitor.network_devices import attach_network_identity, enrich_summary_with_network_speed
 from netbox.monitor.speed import ONE_DAY_MS, normalize_speed_test, speed_policy
 from netbox.storage import DEFAULT_STORAGE_CONFIG, StatusStore
 from netbox.monitor.summary import capture_events, latency_warn_ms_for, status_for_result, summarize
@@ -84,7 +85,7 @@ class MonitorState:
 
         with self.lock:
             self.samples.append(sample)
-            if self.store:
+            if self._store_available():
                 self.store.record_sample(sample, self.config)
             max_samples = (
                 math.ceil(self.config.duration_ms / self.config.interval_ms) + 10
@@ -98,7 +99,7 @@ class MonitorState:
             event_count = len(self.events)
             capture_events(self.last_summary, summary, sample, self.events, self.broadcast)
             new_events: list[dict[str, Any]] = []
-            if self.store:
+            if self._store_available():
                 new_events = self.events[event_count:]
                 self.store.record_events(new_events)
                 self.store.record_incident_events(new_events)
@@ -485,9 +486,13 @@ class MonitorState:
 
         normalized = normalize_speed_test(payload)
         with self.lock:
+            normalized = attach_network_identity(normalized, self.network)
             test = self.store.record_speed_test(normalized)
+            summary = self._summarize()
+            self.last_summary = summary
 
         self.broadcast({"type": "speedTest", "test": test})
+        self.broadcast({"type": "status", "summary": summary})
         return {"test": test, "policy": self.speed_test_policy()}
 
     def speed_test_policy(self) -> dict[str, Any]:
@@ -646,8 +651,10 @@ class MonitorState:
     def _summarize(self) -> dict[str, Any]:
         """Build a summary from the currently retained in-memory samples."""
 
-        persisted_latest = self.store.latest_check_results_by_target() if self.store else None
-        return summarize(
+        persisted_latest = (
+            self.store.latest_check_results_by_target() if self._store_available() else None
+        )
+        summary = summarize(
             self.samples,
             self.targets,
             self.config,
@@ -656,6 +663,15 @@ class MonitorState:
             self.started_at,
             persisted_latest,
         )
+        if self._store_available():
+            summary = enrich_summary_with_network_speed(summary, self.store, self.network)
+        return summary
+
+    def _store_available(self) -> bool:
+        """Return whether persistence is still open for reads and writes."""
+
+        store = self.store
+        return store is not None and not store.closed
 
     def _require_store(self) -> StatusStore:
         """Return the persistence gateway or fail for storage-backed APIs."""

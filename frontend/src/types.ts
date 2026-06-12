@@ -34,6 +34,25 @@ export interface NetworkIdentity {
   service: string | null;
 }
 
+/** Compact speed snapshot attached to network devices and gateway targets. */
+export interface NetworkSpeedSnapshot {
+  downloadMbps: number | null;
+  uploadMbps: number | null;
+  testedAt: number;
+}
+
+/** Live-check row for a local Wi-Fi or Ethernet interface. */
+export interface NetworkDeviceSummary {
+  id: string;
+  interface: string;
+  service: string | null;
+  ssid: string | null;
+  label: string;
+  active: boolean;
+  hidden: boolean;
+  networkSpeed: NetworkSpeedSnapshot | null;
+}
+
 /** Recent in-memory result point used for component bars. */
 export interface TargetHistoryPoint {
   at: number;
@@ -73,6 +92,7 @@ export interface TargetSummary {
   recentFailures: number;
   recentHighLatency: number;
   history: TargetHistoryPoint[];
+  networkSpeed?: NetworkSpeedSnapshot | null;
 }
 
 /** Persisted status transition event. */
@@ -95,6 +115,7 @@ export interface StatusSummary {
   overallStatus: Status;
   diagnosis: string;
   network: NetworkIdentity;
+  networkDevices?: NetworkDeviceSummary[];
   targets: TargetSummary[];
   events: StatusEvent[];
   sampleCount: number;
@@ -294,6 +315,10 @@ export interface SpeedTestResult {
   serverLocation: string | null;
   serverHost: string | null;
   error: string | null;
+  networkName?: string | null;
+  networkSsid?: string | null;
+  networkInterface?: string | null;
+  networkService?: string | null;
 }
 
 /** Speed-test provider policy returned by the backend. */

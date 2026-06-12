@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { formatTargetLastValue, sortLiveCheckTargets } from './liveChecks';
-import type { TargetSummary } from './types';
+import {
+  buildLiveCheckRows,
+  formatNetworkSpeed,
+  formatTargetLastValue,
+  sortLiveCheckRows,
+  sortLiveCheckTargets,
+} from './liveChecks';
+import type { NetworkDeviceSummary, TargetSummary } from './types';
 
 function target(id: string, favorite = false): TargetSummary {
   return {
@@ -17,7 +23,7 @@ function target(id: string, favorite = false): TargetSummary {
     intervalMs: 1_000,
     timeoutMs: 900,
     config: {},
-    currentStatus: 'up',
+    currentStatus: 'operational',
     lastOk: true,
     lastLatencyMs: 10,
     lastCheckedAt: 1,
@@ -58,7 +64,7 @@ describe('formatTargetLastValue', () => {
         lastError: null,
         history: [],
       }),
-    ).toBe('—');
+    ).toBe('-');
   });
 
   it('shows pending before the first enabled check after startup', () => {
@@ -80,5 +86,39 @@ describe('sortLiveCheckTargets', () => {
     const sorted = sortLiveCheckTargets([target('a'), target('b', true), target('c'), target('d', true)]);
 
     expect(sorted.map((entry) => entry.id)).toEqual(['b', 'd', 'a', 'c']);
+  });
+});
+
+function networkDevice(id: string): NetworkDeviceSummary {
+  return {
+    id: `network:${id}`,
+    interface: id,
+    service: 'Wi-Fi',
+    ssid: 'Office',
+    label: 'Office WiFi',
+    active: true,
+    hidden: false,
+    networkSpeed: {
+      downloadMbps: 100,
+      uploadMbps: 25,
+      testedAt: 1,
+    },
+  };
+}
+
+describe('formatNetworkSpeed', () => {
+  it('formats download and upload together', () => {
+    expect(formatNetworkSpeed({ downloadMbps: 100, uploadMbps: 25, testedAt: 1 })).toBe('100.0 Mbps / 25.0 Mbps');
+    expect(formatNetworkSpeed(null)).toBe('-');
+  });
+});
+
+describe('buildLiveCheckRows', () => {
+  it('places network devices before monitor targets', () => {
+    const rows = sortLiveCheckRows(buildLiveCheckRows([target('dns')], [networkDevice('en0')]));
+    expect(rows.map((row) => (row.kind === 'networkDevice' ? row.device.id : row.target.id))).toEqual([
+      'network:en0',
+      'dns',
+    ]);
   });
 });

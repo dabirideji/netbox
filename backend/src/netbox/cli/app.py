@@ -183,23 +183,12 @@ def run(config: MonitorConfig) -> int:
         raise
 
     dev_mode = os.environ.get("NETBOX_DEV_MODE") == "1"
-    store_closed = False
-
-    def close_store() -> None:
-        nonlocal store_closed
-        if store_closed:
-            return
-        store_closed = True
-        store.close()
 
     try:
         threading.Thread(target=server.serve_forever, daemon=True).start()
 
         def stop(_signum: int | None = None, _frame: object | None = None) -> None:
             state.stopping.set()
-            if dev_mode:
-                server.shutdown()
-                close_store()
 
         signal.signal(signal.SIGINT, stop)
         signal.signal(signal.SIGTERM, stop)
@@ -215,7 +204,7 @@ def run(config: MonitorConfig) -> int:
         state.stopping.set()
         server.shutdown()
         server.server_close()
-        close_store()
+        store.close()
 
     if not dev_mode and not config.no_clear and state.last_summary:
         render_dashboard(state.last_summary, config)

@@ -40,7 +40,7 @@ def format_alert_datetime(timestamp_ms: int | None) -> str:
     """Format one epoch-ms timestamp for alert emails."""
 
     if timestamp_ms is None:
-        return "—"
+        return "-"
     return datetime.fromtimestamp(timestamp_ms / 1000).strftime("%b %d, %Y · %H:%M:%S")
 
 
@@ -101,9 +101,9 @@ def build_alert_email_plain(
         f"Observed: {observed_at}",
         "",
         "Message:",
-        message or "—",
+        message or "-",
         "",
-        "—",
+        "-",
         "Sent by Netbox",
     ]
     return "\n".join(lines)
@@ -124,7 +124,7 @@ def build_alert_email_html(
     to_meta = status_meta(to_status)
     from_meta = status_meta(from_status)
     safe_label = html.escape(label)
-    safe_message = html.escape(message or "—")
+    safe_message = html.escape(message or "-")
     safe_observed_at = html.escape(observed_at)
     safe_from = html.escape(from_meta["label"])
     safe_to = html.escape(to_meta["label"])

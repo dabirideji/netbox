@@ -109,4 +109,8 @@ def speed_test_from_row(row: sqlite3.Row) -> dict[str, Any]:
         "serverLocation": row["server_location"],
         "serverHost": row["server_host"],
         "error": row["error"],
+        "networkName": row["network_name"] if "network_name" in row.keys() else None,
+        "networkSsid": row["network_ssid"] if "network_ssid" in row.keys() else None,
+        "networkInterface": row["network_interface"] if "network_interface" in row.keys() else None,
+        "networkService": row["network_service"] if "network_service" in row.keys() else None,
     }

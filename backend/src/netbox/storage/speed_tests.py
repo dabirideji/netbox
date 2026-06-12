@@ -7,6 +7,28 @@ from typing import Any
 from netbox.storage.config import build_time_filter
 from netbox.storage.rows import speed_test_from_row
 
+SPEED_TEST_COLUMNS = """
+  id,
+  tested_at,
+  provider,
+  status,
+  download_mbps,
+  upload_mbps,
+  latency_ms,
+  jitter_ms,
+  packet_loss_pct,
+  retransmission_pct,
+  duration_ms,
+  server_name,
+  server_location,
+  server_host,
+  error,
+  network_name,
+  network_ssid,
+  network_interface,
+  network_service
+"""
+
 
 class SpeedTestStoreMixin:
     """Speed test writes and paginated reads."""
@@ -31,8 +53,12 @@ class SpeedTestStoreMixin:
                   server_name,
                   server_location,
                   server_host,
-                  error
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                  error,
+                  network_name,
+                  network_ssid,
+                  network_interface,
+                  network_service
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     test["testedAt"],
@@ -49,27 +75,16 @@ class SpeedTestStoreMixin:
                     test["serverLocation"],
                     test["serverHost"],
                     test["error"],
+                    test.get("networkName"),
+                    test.get("networkSsid"),
+                    test.get("networkInterface"),
+                    test.get("networkService"),
                 ),
             )
             self.connection.commit()
             row = self.connection.execute(
-                """
-                SELECT
-                  id,
-                  tested_at,
-                  provider,
-                  status,
-                  download_mbps,
-                  upload_mbps,
-                  latency_ms,
-                  jitter_ms,
-                  packet_loss_pct,
-                  retransmission_pct,
-                  duration_ms,
-                  server_name,
-                  server_location,
-                  server_host,
-                  error
+                f"""
+                SELECT {SPEED_TEST_COLUMNS}
                 FROM speed_tests
                 WHERE id = ?
                 """,
@@ -104,22 +119,7 @@ class SpeedTestStoreMixin:
             ).fetchone()["total"]
             rows = self.connection.execute(
                 f"""
-                SELECT
-                  id,
-                  tested_at,
-                  provider,
-                  status,
-                  download_mbps,
-                  upload_mbps,
-                  latency_ms,
-                  jitter_ms,
-                  packet_loss_pct,
-                  retransmission_pct,
-                  duration_ms,
-                  server_name,
-                  server_location,
-                  server_host,
-                  error
+                SELECT {SPEED_TEST_COLUMNS}
                 FROM speed_tests
                 {where_sql}
                 ORDER BY tested_at DESC, id DESC
@@ -176,26 +176,54 @@ class SpeedTestStoreMixin:
 
         with self.lock:
             row = self.connection.execute(
-                """
-                SELECT
-                  id,
-                  tested_at,
-                  provider,
-                  status,
-                  download_mbps,
-                  upload_mbps,
-                  latency_ms,
-                  jitter_ms,
-                  packet_loss_pct,
-                  retransmission_pct,
-                  duration_ms,
-                  server_name,
-                  server_location,
-                  server_host,
-                  error
+                f"""
+                SELECT {SPEED_TEST_COLUMNS}
                 FROM speed_tests
                 ORDER BY tested_at DESC, id DESC
                 LIMIT 1
                 """
             ).fetchone()
         return speed_test_from_row(row) if row else None
+
+    def latest_completed_speed_test_for_network(
+        self,
+        interface: str | None,
+        ssid: str | None,
+    ) -> dict[str, Any] | None:
+        """Return the newest completed speed test for one network interface or SSID."""
+
+        with self.lock:
+            if interface:
+                row = self.connection.execute(
+                    f"""
+                    SELECT {SPEED_TEST_COLUMNS}
+                    FROM speed_tests
+                    WHERE status = 'completed'
+                      AND network_interface = ?
+                    ORDER BY tested_at DESC, id DESC
+                    LIMIT 1
+                    """,
+                    (interface,),
+                ).fetchone()
+                if row:
+                    return speed_test_from_row(row)
+
+            if ssid:
+                row = self.connection.execute(
+                    f"""
+                    SELECT {SPEED_TEST_COLUMNS}
+                    FROM speed_tests
+                    WHERE status = 'completed'
+                      AND network_ssid = ?
+                    ORDER BY tested_at DESC, id DESC
+                    LIMIT 1
+                    """,
+                    (ssid,),
+                ).fetchone()
+                if row:
+                    return speed_test_from_row(row)
+
+        latest = self.latest_speed_test()
+        if latest and latest.get("status") == "completed":
+            return latest
+        return None

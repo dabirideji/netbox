@@ -105,6 +105,10 @@ CREATE TABLE IF NOT EXISTS speed_tests (
   server_location TEXT,
   server_host TEXT,
   error TEXT,
+  network_name TEXT,
+  network_ssid TEXT,
+  network_interface TEXT,
+  network_service TEXT,
   created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
 );
 

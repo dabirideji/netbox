@@ -1,3 +1,5 @@
+import threading
+import time
 from pathlib import Path
 
 from netbox.core.models import MonitorConfig, NetworkIdentity, PingResult, Target
@@ -44,6 +46,63 @@ def test_scheduler_skips_disabled_targets() -> None:
     scheduler.run(now_ms() + 1_000, stop_after_first)
 
     assert calls == ["up"]
+
+
+def test_scheduler_drains_checks_before_store_close(tmp_path: Path) -> None:
+    target = Target("up", "127.0.0.1", "Up", "gateway", interval_ms=50)
+    store = StatusStore(tmp_path / "status.sqlite3")
+    store.seed_targets([target])
+    state = MonitorState(
+        config(str(tmp_path / "status.sqlite3")),
+        [target],
+        NetworkIdentity("Test", "wifi", "en0", "Wi-Fi"),
+        now_ms(),
+        store,
+    )
+    started = threading.Event()
+
+    def checker(check_target: Target) -> PingResult:
+        started.set()
+        time.sleep(0.05)
+        return PingResult(
+            check_target.id,
+            check_target.host,
+            check_target.label,
+            check_target.scope,
+            True,
+            1.0,
+            now_ms(),
+            1,
+            None,
+        )
+
+    scheduler = TargetScheduler(state, max_workers=1, jitter_ratio=0, checker=checker)
+    worker = threading.Thread(target=lambda: scheduler.run(now_ms() + 10_000, None))
+    worker.start()
+    assert started.wait(1)
+    state.stopping.set()
+    worker.join(2)
+    assert not worker.is_alive()
+    store.close()
+
+
+def test_summarize_ignores_closed_store(tmp_path: Path) -> None:
+    target = Target("up", "127.0.0.1", "Up", "gateway")
+    store = StatusStore(tmp_path / "status.sqlite3")
+    store.seed_targets([target])
+    state = MonitorState(
+        config(str(tmp_path / "status.sqlite3")),
+        [target],
+        NetworkIdentity("Test", "wifi", "en0", "Wi-Fi"),
+        now_ms(),
+        store,
+    )
+
+    store.close()
+
+    summary = state._summarize()
+
+    assert summary["targets"][0]["id"] == "up"
 
 
 def test_scheduler_jitter_stays_within_ratio() -> None:

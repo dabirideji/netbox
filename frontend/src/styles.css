@@ -19,6 +19,7 @@
   --glass-surface: color-mix(in srgb, var(--surface) 82%, transparent);
   --glass-surface-soft: color-mix(in srgb, var(--surface-soft) 78%, transparent);
   --glass-surface-muted: color-mix(in srgb, var(--surface-muted) 75%, transparent);
+  --speed-gauge-bg: color-mix(in srgb, var(--bg) 76%, black);
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   color-scheme: dark;
@@ -35,6 +36,7 @@
   --text: #f4f4f5;
   --muted: #a1a1aa;
   --faint: #71717a;
+  --speed-gauge-bg: color-mix(in srgb, var(--bg) 76%, black);
   --surface-hover: rgb(255 255 255 / 0.02);
   --popover-shadow: 0 12px 28px rgb(0 0 0 / 0.38);
   --button-default-hover: #d4d4d8;
@@ -54,6 +56,7 @@
   --text: #18181b;
   --muted: #71717a;
   --faint: #a1a1aa;
+  --speed-gauge-bg: color-mix(in srgb, var(--surface-muted) 72%, var(--faint));
   --surface-hover: rgb(0 0 0 / 0.04);
   --popover-shadow: 0 12px 28px rgb(0 0 0 / 0.12);
   --button-default-hover: #27272a;
@@ -133,17 +136,12 @@ body.has-wallpaper::before {
   .speed-insights,
   .speed-insight-card,
   .speed-history,
-  .speed-arc-gauge,
   .speed-history__row:not(.speed-history__row--head),
   .components-grid__head
 ),
 :is(.ui-popover__content, .ui-chart-tooltip) {
   -webkit-backdrop-filter: blur(calc(var(--glass-blur) * 0.8)) saturate(var(--glass-saturate));
   backdrop-filter: blur(calc(var(--glass-blur) * 0.8)) saturate(var(--glass-saturate));
-}
-
-body.has-wallpaper .speed-arc-gauge.is-running {
-  background: color-mix(in srgb, var(--yellow) 14%, var(--glass-surface-soft));
 }
 
 @media (prefers-reduced-transparency: reduce) {
@@ -162,7 +160,6 @@ body.has-wallpaper .speed-arc-gauge.is-running {
     .speed-insights,
     .speed-insight-card,
     .speed-history,
-    .speed-arc-gauge,
     .speed-history__row:not(.speed-history__row--head),
     .components-grid__head,
     .ui-popover__content,
@@ -185,10 +182,16 @@ body.has-wallpaper .speed-arc-gauge.is-running {
     .speed-insights,
     .speed-insight-card,
     .speed-history,
-    .speed-arc-gauge,
     .speed-history__row:not(.speed-history__row--head)
   ) {
     background: var(--surface-soft);
+  }
+
+  .speed-arc-gauge,
+  .speed-arc-gauge.is-active,
+  .speed-arc-gauge.is-running,
+  .speed-arc-gauge.is-running.is-active {
+    background: var(--speed-gauge-bg);
   }
 }
 
@@ -1119,6 +1122,7 @@ h2 {
     64px
     118px
     140px
+    minmax(96px, 1.1fr)
     72px
     90px
     68px
@@ -1126,7 +1130,7 @@ h2 {
     56px;
   column-gap: 10px;
   row-gap: 6px;
-  min-width: 1128px;
+  min-width: 1238px;
 }
 
 @supports not (grid-template-columns: subgrid) {
@@ -1139,6 +1143,7 @@ h2 {
       64px
       118px
       140px
+      minmax(96px, 1.1fr)
       72px
       90px
       68px
@@ -1491,6 +1496,12 @@ h2 {
   background: var(--glass-surface-soft);
 }
 
+html.is-settings-modal-open,
+body.is-settings-modal-open {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
 body.is-target-reordering {
   user-select: none;
   cursor: grabbing;
@@ -1510,6 +1521,34 @@ body.is-target-reordering .target-drag-handle {
 
 .component-row.is-paused {
   opacity: 0.64;
+}
+
+.component-row--network-device {
+  background: color-mix(in srgb, var(--glass-surface-muted) 55%, transparent);
+}
+
+.component-name__color--network {
+  background: linear-gradient(135deg, #38bdf8, #6366f1);
+}
+
+.target-drag-handle--static {
+  cursor: default;
+  opacity: 0.35;
+}
+
+.history--empty {
+  min-height: 12px;
+}
+
+.live-check-actions--network {
+  display: inline-flex;
+  color: var(--faint);
+  opacity: 0.45;
+}
+
+.component-cell--speed {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 .target-drag-handle {
@@ -3024,43 +3063,18 @@ body.is-target-reordering .target-drag-handle {
   display: grid;
   gap: 8px;
   padding: 10px;
-  border: 1px solid var(--line-soft);
+  border: 0;
   border-radius: var(--radius);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent);
+  background: var(--speed-gauge-bg);
+  box-shadow: none;
 }
 
-.speed-arc-gauge.is-active {
-  border-color: var(--line);
-}
-
-.speed-arc-gauge.is-running {
-  border-color: rgba(234, 179, 8, 0.34);
-  background: linear-gradient(180deg, rgba(234, 179, 8, 0.1), rgba(255, 255, 255, 0.03) 42%, transparent);
-  box-shadow:
-    0 0 0 1px rgba(234, 179, 8, 0.1),
-    0 0 20px rgba(234, 179, 8, 0.08);
-  animation: speed-arc-gauge-pulse 2.4s ease-in-out infinite;
-}
-
+.speed-arc-gauge.is-active,
+.speed-arc-gauge.is-running,
 .speed-arc-gauge.is-running.is-active {
-  border-color: rgba(234, 179, 8, 0.42);
-}
-
-@keyframes speed-arc-gauge-pulse {
-  0%,
-  100% {
-    box-shadow:
-      0 0 0 1px rgba(234, 179, 8, 0.1),
-      0 0 16px rgba(234, 179, 8, 0.06);
-    background: linear-gradient(180deg, rgba(234, 179, 8, 0.08), rgba(255, 255, 255, 0.02) 42%, transparent);
-  }
-
-  50% {
-    box-shadow:
-      0 0 0 1px rgba(234, 179, 8, 0.16),
-      0 0 24px rgba(234, 179, 8, 0.12);
-    background: linear-gradient(180deg, rgba(234, 179, 8, 0.14), rgba(255, 255, 255, 0.04) 42%, transparent);
-  }
+  border: 0;
+  background: var(--speed-gauge-bg);
+  box-shadow: none;
 }
 
 .speed-arc-gauge__visual {
@@ -3902,6 +3916,26 @@ body.has-wallpaper :is(.settings-button__control, .wallpaper-refresh__button) {
 .settings-panel__section {
   position: relative;
   padding: 16px;
+}
+
+.settings-panel__body--about {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.settings-panel__section--about {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  padding: 16px 0 0;
+  box-sizing: border-box;
+}
+
+.settings-panel__section--about .about-panel__content {
+  padding-inline: 16px;
+  padding-bottom: 16px;
 }
 
 .settings-panel__section:not(:first-child):not(:only-child)::before {

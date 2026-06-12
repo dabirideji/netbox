@@ -5,10 +5,12 @@ import {
   PhFloppyDisk,
   PhHardDrives,
   PhImage,
+  PhInfo,
   PhSpinner,
 } from '@phosphor-icons/vue';
-import { computed, ref, watch } from 'vue';
+import { computed, onUnmounted, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
+import AboutSettingsPanel from './settings/AboutSettingsPanel.vue';
 import SmtpSettingsPanel from './settings/SmtpSettingsPanel.vue';
 import StorageSettingsPanel from './settings/StorageSettingsPanel.vue';
 import { Button } from './ui/button';
@@ -29,7 +31,7 @@ import {
   WALLPAPER_CATEGORIES,
 } from '../wallpaperCategories';
 
-type SettingsTab = 'alerts' | 'email' | 'storage' | 'wallpaper';
+type SettingsTab = 'alerts' | 'email' | 'storage' | 'wallpaper' | 'about';
 
 const settingsStore = useSettingsStore();
 const alertsStore = useAlertsStore();
@@ -72,12 +74,22 @@ const wallpaperIntervalMinutes = computed({
   },
 });
 
+function setPageScrollLocked(locked: boolean): void {
+  document.documentElement.classList.toggle('is-settings-modal-open', locked);
+  document.body.classList.toggle('is-settings-modal-open', locked);
+}
+
 watch(isOpen, (open) => {
+  setPageScrollLocked(open);
   if (!open) return;
   activeTab.value = 'alerts';
   wallpaperStore.syncFromStorage();
   void alertsStore.loadSmtp();
   void storageStore.loadAll();
+});
+
+onUnmounted(() => {
+  setPageScrollLocked(false);
 });
 
 async function onSave(): Promise<void> {
@@ -185,9 +197,24 @@ const isFooterSaving = computed(() =>
                 />
                 <span>Wallpaper</span>
               </button>
+              <button
+                type="button"
+                class="settings-panel__tab"
+                :class="{ 'is-active': activeTab === 'about' }"
+                role="tab"
+                :aria-selected="activeTab === 'about'"
+                @click="activeTab = 'about'"
+              >
+                <PhInfo
+                  class="settings-panel__tab-icon"
+                  :weight="activeTab === 'about' ? 'fill' : 'bold'"
+                  aria-hidden="true"
+                />
+                <span>About</span>
+              </button>
             </div>
 
-            <div class="settings-panel__body">
+            <div class="settings-panel__body" :class="{ 'settings-panel__body--about': activeTab === 'about' }">
               <section v-show="activeTab === 'alerts'" class="settings-panel__section">
                 <div class="settings-panel__section-head">
                   <h3>Default alert behavior</h3>
@@ -326,11 +353,18 @@ const isFooterSaving = computed(() =>
                 <p v-if="wallpaperError" class="target-error settings-panel__message">{{ wallpaperError }}</p>
               </section>
 
+              <section v-show="activeTab === 'about'" class="settings-panel__section settings-panel__section--about">
+                <AboutSettingsPanel />
+              </section>
+
               <p v-if="error" class="target-error settings-panel__message">{{ error }}</p>
               <p v-if="message" class="settings-panel__success settings-panel__message">{{ message }}</p>
             </div>
 
-            <div v-if="activeTab !== 'email' && activeTab !== 'wallpaper'" class="settings-panel__footer">
+            <div
+              v-if="activeTab !== 'email' && activeTab !== 'wallpaper' && activeTab !== 'about'"
+              class="settings-panel__footer"
+            >
               <Button type="button" size="sm" :disabled="isFooterSaving" @click="onSave">
                 <PhSpinner
                   v-if="isFooterSaving"

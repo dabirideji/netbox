@@ -109,6 +109,30 @@ def migrate_storage_settings(connection: sqlite3.Connection) -> None:
     )
 
 
+def migrate_speed_tests_network(connection: sqlite3.Connection) -> None:
+    """Add network identity columns to persisted speed tests."""
+
+    tables = {
+        row[0]
+        for row in connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table'",
+        ).fetchall()
+    }
+    if "speed_tests" not in tables:
+        return
+
+    columns = {row[1] for row in connection.execute("PRAGMA table_info(speed_tests)")}
+    additions = {
+        "network_name": "TEXT",
+        "network_ssid": "TEXT",
+        "network_interface": "TEXT",
+        "network_service": "TEXT",
+    }
+    for column, column_type in additions.items():
+        if column not in columns:
+            connection.execute(f"ALTER TABLE speed_tests ADD COLUMN {column} {column_type}")
+
+
 def migrate_monitor_targets_sort_order(connection: sqlite3.Connection) -> None:
     """Add persisted target ordering when upgrading older databases."""
 

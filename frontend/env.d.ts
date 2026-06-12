@@ -2,6 +2,13 @@
 
 declare module '*.css';
 declare const __NETBOX_APP_NAME__: string;
+declare const __NETBOX_APP_VERSION__: string;
+declare const __NETBOX_OPEN_SOURCE__: boolean;
+declare const __NETBOX_APP_ID__: string;
+declare const __NETBOX_BUILD_COPYRIGHT__: string;
+declare const __NETBOX_BUILDER_NAME__: string;
+declare const __NETBOX_BUILDER_VERSION__: string;
+declare const __NETBOX_BUILD_AUTHOR__: string;
 
 interface NetboxDesktopNetworkAccessResult {
   ok: boolean;
