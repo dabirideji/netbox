@@ -27,6 +27,7 @@ import {
   useSpeedTestStore,
   useStorageStore,
   useTargetsStore,
+  useWallpaperStore,
 } from './stores';
 
 const appName = __NETBOX_APP_NAME__;
@@ -37,6 +38,7 @@ const speedTest = useSpeedTestStore();
 const storage = useStorageStore();
 const personalisation = usePersonalisationStore();
 const targetsStore = useTargetsStore();
+const wallpaperStore = useWallpaperStore();
 
 const { summary, connectionState } = storeToRefs(monitor);
 const { points: historyPoints, targetSeries, events, eventTotal, rangeError, isRangeActive } = storeToRefs(history);
@@ -129,6 +131,7 @@ function handleVisibilityChange(): void {
 }
 
 onMounted(async () => {
+  wallpaperStore.ensureStarted();
   await Promise.all([personalisation.fetchPreferences(true), monitor.loadStatus()]);
   monitor.seedEventsFromSummary(EVENT_PAGE_SIZE);
 

@@ -7,6 +7,7 @@ import type { MonitorTarget, StatusSummary, StreamPayload } from '../types';
 import { coalesceToAnimationFrame } from '../utils/schedule';
 import { reorderTargetsByIds } from '../targetOrder';
 import { handleAlertNotification } from '../composables/useAlertNotifications';
+import { isNetboxDesktop } from '../platform';
 import { slimStatusSummary } from '../utils/monitorPersist';
 import { useHistoryStore } from './history';
 import { useSpeedTestStore } from './speedTest';
@@ -67,7 +68,7 @@ export const useMonitorStore = defineStore(
         syncSummaryTargets(payload.targets);
       }
 
-      if (payload.type === 'alert') {
+      if (payload.type === 'alert' && !isNetboxDesktop()) {
         void handleAlertNotification(payload.alert);
       }
 

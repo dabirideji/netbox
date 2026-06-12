@@ -11,8 +11,10 @@ import {
 } from './backend';
 import { APP_NAME, DEFAULT_BACKEND_PORT } from './constants';
 import { openMacLocationSettings, requestWifiNetworkAccess } from './networkAccess';
+import { startAlertStream, stopAlertStream } from './alertStream';
 import {
   closeTrayWindow,
+  ensureTrayWindow,
   hideTrayWindow,
   isTrayCompactMode,
   registerTrayWindowHandlers,
@@ -245,7 +247,7 @@ function showMainWindow(): void {
   mainWindow.focus();
 }
 
-function registerNetworkHandlers(): void {
+function registerDesktopHandlers(): void {
   ipcMain.handle('network:open-location-settings', async () => {
     await openMacLocationSettings();
   });
@@ -298,8 +300,13 @@ async function boot(): Promise<void> {
     splashWindow?.close();
     splashWindow = null;
 
-    if (!app.commandLine.hasSwitch('hidden') && tray) {
-      toggleTrayWindow(tray, backend.origin);
+    startAlertStream(backend.origin);
+
+    if (tray) {
+      ensureTrayWindow(backend.origin, tray);
+      if (!app.commandLine.hasSwitch('hidden')) {
+        toggleTrayWindow(tray, backend.origin);
+      }
     }
   } catch (error) {
     splashWindow?.close();
@@ -315,7 +322,7 @@ async function boot(): Promise<void> {
 }
 
 app.whenReady().then(async () => {
-  registerNetworkHandlers();
+  registerDesktopHandlers();
   registerTrayWindowHandlers(() => tray);
   applyLoginItemSettings();
   if (isPackagedApp() && process.env.NETBOX_AUTO_UPDATE !== '0') {
@@ -326,6 +333,7 @@ app.whenReady().then(async () => {
 
 app.on('before-quit', () => {
   quitting = true;
+  stopAlertStream();
   closeTrayWindow();
   stopBackend(backend);
   backend = null;

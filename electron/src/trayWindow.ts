@@ -232,6 +232,10 @@ export function toggleTrayWindow(tray: Tray, origin: string): void {
   showTrayAtPreferredPosition(window, tray);
   window.show();
   window.focus();
+  void window.webContents.executeJavaScript(
+    'window.dispatchEvent(new Event("focus"));',
+    true,
+  );
 }
 
 export function hideTrayWindow(): void {

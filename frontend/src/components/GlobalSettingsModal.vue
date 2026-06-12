@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import { PhBell, PhEnvelopeSimple, PhFloppyDisk, PhHardDrives, PhSpinner } from '@phosphor-icons/vue';
+import {
+  PhBell,
+  PhEnvelopeSimple,
+  PhFloppyDisk,
+  PhHardDrives,
+  PhImage,
+  PhSpinner,
+} from '@phosphor-icons/vue';
 import { computed, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import SmtpSettingsPanel from './settings/SmtpSettingsPanel.vue';
@@ -12,17 +19,25 @@ import { requestNotificationPermission } from '../composables/useAlertNotificati
 import { useAlertsStore } from '../stores/alerts';
 import { useSettingsStore } from '../stores/settings';
 import { useStorageStore } from '../stores/storage';
+import { useWallpaperStore } from '../stores/wallpaper';
+import {
+  MAX_WALLPAPER_INTERVAL_MS,
+  MIN_WALLPAPER_INTERVAL_MS,
+} from '../wallpaper';
 
-type SettingsTab = 'alerts' | 'email' | 'storage';
+type SettingsTab = 'alerts' | 'email' | 'storage' | 'wallpaper';
 
 const settingsStore = useSettingsStore();
 const alertsStore = useAlertsStore();
 const storageStore = useStorageStore();
+const wallpaperStore = useWallpaperStore();
 
 const activeTab = ref<SettingsTab>('alerts');
 
 const { isOpen, platformAlerts, isLoading, isSaving, error, message } = storeToRefs(settingsStore);
 const { isSaving: isSavingStorage, error: storageError } = storeToRefs(storageStore);
+const { enabled: wallpaperEnabled, loading: wallpaperLoading, error: wallpaperError } =
+  storeToRefs(wallpaperStore);
 
 const cooldownMinutes = computed({
   get: () => Math.round(platformAlerts.value.defaultCooldownMs / 60_000),
@@ -32,9 +47,23 @@ const cooldownMinutes = computed({
   },
 });
 
+const minWallpaperIntervalMinutes = Math.round(MIN_WALLPAPER_INTERVAL_MS / 60_000);
+const maxWallpaperIntervalMinutes = Math.round(MAX_WALLPAPER_INTERVAL_MS / 60_000);
+
+const wallpaperIntervalMinutes = computed({
+  get: () => Math.round(wallpaperStore.intervalMs / 60_000),
+  set: (value: number) => {
+    const minutes = Number.isFinite(value)
+      ? Math.max(minWallpaperIntervalMinutes, Math.min(maxWallpaperIntervalMinutes, value))
+      : Math.round(wallpaperStore.intervalMs / 60_000);
+    wallpaperStore.setIntervalMs(minutes * 60_000);
+  },
+});
+
 watch(isOpen, (open) => {
   if (!open) return;
   activeTab.value = 'alerts';
+  wallpaperStore.syncFromStorage();
   void alertsStore.loadSmtp();
   void storageStore.loadAll();
 });
@@ -129,6 +158,21 @@ const isFooterSaving = computed(() =>
                 />
                 <span>Storage</span>
               </button>
+              <button
+                type="button"
+                class="settings-panel__tab"
+                :class="{ 'is-active': activeTab === 'wallpaper' }"
+                role="tab"
+                :aria-selected="activeTab === 'wallpaper'"
+                @click="activeTab = 'wallpaper'"
+              >
+                <PhImage
+                  class="settings-panel__tab-icon"
+                  :weight="activeTab === 'wallpaper' ? 'fill' : 'bold'"
+                  aria-hidden="true"
+                />
+                <span>Wallpaper</span>
+              </button>
             </div>
 
             <div class="settings-panel__body">
@@ -206,11 +250,49 @@ const isFooterSaving = computed(() =>
                 <StorageSettingsPanel />
               </section>
 
+              <section v-show="activeTab === 'wallpaper'" class="settings-panel__section">
+                <div class="settings-panel__section-head">
+                  <h3>Pexels wallpaper</h3>
+                  <p class="settings-panel__hint">
+                    Nature photos as a fixed dashboard background. Requires `PEXELS_API_KEY` on the server.
+                  </p>
+                </div>
+
+                <div class="settings-panel__row">
+                  <div>
+                    <strong>Enable wallpaper</strong>
+                    <p class="settings-panel__hint">
+                      When enabled, a refresh button appears in the top-left corner of the dashboard.
+                    </p>
+                  </div>
+                  <Switch
+                    :model-value="wallpaperEnabled"
+                    :disabled="wallpaperLoading"
+                    @update:model-value="wallpaperStore.setEnabled"
+                  />
+                </div>
+
+                <label v-if="wallpaperEnabled" class="settings-panel__field">
+                  <Label>Background change interval (minutes)</Label>
+                  <input
+                    v-model.number="wallpaperIntervalMinutes"
+                    type="number"
+                    :min="minWallpaperIntervalMinutes"
+                    :max="maxWallpaperIntervalMinutes"
+                  />
+                  <p class="settings-panel__hint">
+                    Fetches a new image on this schedule while wallpaper is on.
+                  </p>
+                </label>
+
+                <p v-if="wallpaperError" class="target-error settings-panel__message">{{ wallpaperError }}</p>
+              </section>
+
               <p v-if="error" class="target-error settings-panel__message">{{ error }}</p>
               <p v-if="message" class="settings-panel__success settings-panel__message">{{ message }}</p>
             </div>
 
-            <div v-if="activeTab !== 'email'" class="settings-panel__footer">
+            <div v-if="activeTab !== 'email' && activeTab !== 'wallpaper'" class="settings-panel__footer">
               <Button type="button" size="sm" :disabled="isFooterSaving" @click="onSave">
                 <PhSpinner
                   v-if="isFooterSaving"

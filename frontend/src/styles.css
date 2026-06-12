@@ -192,7 +192,7 @@ body.has-wallpaper .speed-arc-gauge.is-running {
   }
 }
 
-/* App chrome: loading spinner, wallpaper toggle, theme switcher */
+/* App chrome: loading spinner, wallpaper refresh, theme switcher */
 
 .api-loading-spinner {
   position: fixed;
@@ -3684,38 +3684,16 @@ body.is-target-reordering .target-drag-handle {
   outline-offset: 2px;
 }
 
-.wallpaper-toggle {
-  position: fixed;
-  top: 0.75rem;
-  left: 0.75rem;
-  z-index: 1000;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.wallpaper-toggle__label {
-  margin: 0;
-  color: var(--text);
-  font-size: 0.68rem;
-  font-weight: 500;
-  line-height: 1;
-  user-select: none;
-  text-shadow:
-    0 1px 2px rgb(0 0 0 / 0.55),
-    0 0 10px rgb(0 0 0 / 0.35);
-}
-
-[data-theme="light"] .wallpaper-toggle__label {
-  text-shadow:
-    0 1px 2px rgb(255 255 255 / 0.85),
-    0 0 10px rgb(255 255 255 / 0.55);
-}
-
+.wallpaper-refresh,
 .theme-switcher,
 .settings-button {
   position: fixed;
   z-index: 1000;
+}
+
+.wallpaper-refresh {
+  top: 0.75rem;
+  left: 0.75rem;
 }
 
 .theme-switcher {
@@ -3729,7 +3707,8 @@ body.is-target-reordering .target-drag-handle {
 }
 
 .theme-switcher__button,
-.settings-button__control {
+.settings-button__control,
+.wallpaper-refresh__button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -3749,25 +3728,37 @@ body.is-target-reordering .target-drag-handle {
 }
 
 .theme-switcher__button:hover,
-.settings-button__control:hover {
+.settings-button__control:hover,
+.wallpaper-refresh__button:hover:not(:disabled) {
   background: var(--glass-surface-soft);
   border-color: var(--line);
   color: var(--text);
 }
 
 .theme-switcher__button:focus-visible,
-.settings-button__control:focus-visible {
+.settings-button__control:focus-visible,
+.wallpaper-refresh__button:focus-visible {
   outline: 2px solid var(--line);
   outline-offset: 2px;
 }
 
+.wallpaper-refresh__button:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
+
 .theme-switcher__icon,
-.settings-button__icon {
+.settings-button__icon,
+.wallpaper-refresh__icon {
   width: 1rem;
   height: 1rem;
 }
 
-body.has-wallpaper :is(.settings-button__control) {
+.wallpaper-refresh__icon.is-spinning {
+  animation: api-loading-spin 0.85s linear infinite;
+}
+
+body.has-wallpaper :is(.settings-button__control, .wallpaper-refresh__button) {
   background: var(--glass-surface);
   backdrop-filter: blur(var(--glass-blur));
   -webkit-backdrop-filter: blur(var(--glass-blur));
@@ -4137,7 +4128,7 @@ body.has-wallpaper .global-settings-modal .settings-panel__footer {
 }
 
 @media (max-width: 900px) {
-  .wallpaper-toggle {
+  .wallpaper-refresh {
     top: calc(0.75rem + env(safe-area-inset-top, 0px));
   }
 

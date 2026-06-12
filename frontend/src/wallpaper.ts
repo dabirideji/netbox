@@ -1,5 +1,42 @@
 export const WALLPAPER_ENABLED_STORAGE_KEY = 'netbox-wallpaper-enabled';
 export const WALLPAPER_URL_STORAGE_KEY = 'netbox-wallpaper-url-nature-hd';
+export const WALLPAPER_INTERVAL_MS_STORAGE_KEY = 'netbox-wallpaper-interval-ms';
+
+export const DEFAULT_WALLPAPER_INTERVAL_MS = 30 * 60_000;
+export const MIN_WALLPAPER_INTERVAL_MS = 5 * 60_000;
+export const MAX_WALLPAPER_INTERVAL_MS = 24 * 60 * 60_000;
+
+export function clampWallpaperIntervalMs(ms: number): number {
+  if (!Number.isFinite(ms)) {
+    return DEFAULT_WALLPAPER_INTERVAL_MS;
+  }
+
+  return Math.max(
+    MIN_WALLPAPER_INTERVAL_MS,
+    Math.min(MAX_WALLPAPER_INTERVAL_MS, Math.round(ms)),
+  );
+}
+
+export function getWallpaperIntervalMs(): number {
+  if (typeof window === 'undefined') {
+    return DEFAULT_WALLPAPER_INTERVAL_MS;
+  }
+
+  const raw = localStorage.getItem(WALLPAPER_INTERVAL_MS_STORAGE_KEY);
+  if (!raw) {
+    return DEFAULT_WALLPAPER_INTERVAL_MS;
+  }
+
+  return clampWallpaperIntervalMs(Number.parseInt(raw, 10));
+}
+
+export function setWallpaperIntervalMs(ms: number): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  localStorage.setItem(WALLPAPER_INTERVAL_MS_STORAGE_KEY, String(clampWallpaperIntervalMs(ms)));
+}
 
 export function isWallpaperEnabled(): boolean {
   if (typeof window === 'undefined') return false;

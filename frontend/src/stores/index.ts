@@ -22,3 +22,4 @@ export {
 export { PREFERENCE_KEYS } from './preferenceKeys';
 export { useAlertsStore } from './alerts';
 export { useSettingsStore } from './settings';
+export { useWallpaperStore } from './wallpaper';

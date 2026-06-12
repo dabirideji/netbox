@@ -1,6 +1,9 @@
+import { isNetboxDesktop } from '../platform';
 import type { AlertNotification } from '../types';
+import { isStaleSoundAlert, shouldPlayCoalescedSound } from './alertSoundPolicy';
 
 let audioContext: AudioContext | null = null;
+let lastBrowserSoundPlayedAt = 0;
 
 function getAudioContext(): AudioContext | null {
   if (typeof window === 'undefined') return null;
@@ -10,9 +13,25 @@ function getAudioContext(): AudioContext | null {
   return audioContext;
 }
 
-export function playAlertSound(): void {
+/** Unlock AudioContext after tray/docked windows open without an in-page click. */
+export async function primeAudioContext(): Promise<void> {
+  const context = getAudioContext();
+  if (!context || context.state !== 'suspended') return;
+  try {
+    await context.resume();
+  } catch {
+    // Ignore autoplay policy failures; pointer/focus handlers may retry.
+  }
+}
+
+async function playBrowserAlertSound(): Promise<void> {
   const context = getAudioContext();
   if (!context) return;
+
+  if (context.state === 'suspended') {
+    await primeAudioContext();
+  }
+  if (context.state !== 'running') return;
 
   const oscillator = context.createOscillator();
   const gain = context.createGain();
@@ -23,6 +42,10 @@ export function playAlertSound(): void {
   gain.connect(context.destination);
   oscillator.start();
   oscillator.stop(context.currentTime + 0.18);
+}
+
+export async function playAlertSound(): Promise<void> {
+  await playBrowserAlertSound();
 }
 
 export async function requestNotificationPermission(): Promise<NotificationPermission | 'unsupported'> {
@@ -59,9 +82,40 @@ export async function showAlertNotification(alert: AlertNotification): Promise<v
   });
 }
 
+function shouldDeliverBrowserSound(alert: AlertNotification): boolean {
+  if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+    return false;
+  }
+
+  if (isStaleSoundAlert(alert)) {
+    return false;
+  }
+
+  const now = Date.now();
+  if (!shouldPlayCoalescedSound(lastBrowserSoundPlayedAt, now)) {
+    return false;
+  }
+
+  lastBrowserSoundPlayedAt = now;
+  return true;
+}
+
+/** @internal Resets module state between unit tests. */
+export function resetAlertAudioStateForTests(): void {
+  audioContext = null;
+  lastBrowserSoundPlayedAt = 0;
+}
+
 export async function handleAlertNotification(alert: AlertNotification): Promise<void> {
+  if (isNetboxDesktop()) {
+    return;
+  }
+
   if (alert.channel === 'sound') {
-    playAlertSound();
+    if (!shouldDeliverBrowserSound(alert)) {
+      return;
+    }
+    await playAlertSound();
     return;
   }
 

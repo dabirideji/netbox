@@ -1,12 +1,17 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  DEFAULT_WALLPAPER_INTERVAL_MS,
   WALLPAPER_ENABLED_STORAGE_KEY,
+  WALLPAPER_INTERVAL_MS_STORAGE_KEY,
   WALLPAPER_URL_STORAGE_KEY,
   applyWallpaperUrl,
+  clampWallpaperIntervalMs,
   clearWallpaper,
+  getWallpaperIntervalMs,
   initWallpaperFromStorage,
   isWallpaperEnabled,
   setWallpaperEnabled,
+  setWallpaperIntervalMs,
 } from './wallpaper';
 
 describe('wallpaper', () => {
@@ -32,6 +37,20 @@ describe('wallpaper', () => {
 
     expect(document.body.classList.contains('has-wallpaper')).toBe(false);
     expect(document.body.style.getPropertyValue('--wallpaper-image')).toBe('');
+  });
+
+  it('tracks wallpaper rotation interval in localStorage', () => {
+    expect(getWallpaperIntervalMs()).toBe(DEFAULT_WALLPAPER_INTERVAL_MS);
+
+    setWallpaperIntervalMs(45 * 60_000);
+    expect(localStorage.getItem(WALLPAPER_INTERVAL_MS_STORAGE_KEY)).toBe(String(45 * 60_000));
+    expect(getWallpaperIntervalMs()).toBe(45 * 60_000);
+  });
+
+  it('clamps wallpaper rotation interval to supported bounds', () => {
+    expect(clampWallpaperIntervalMs(60_000)).toBe(5 * 60_000);
+    expect(clampWallpaperIntervalMs(48 * 60 * 60_000)).toBe(24 * 60 * 60_000);
+    expect(clampWallpaperIntervalMs(Number.NaN)).toBe(DEFAULT_WALLPAPER_INTERVAL_MS);
   });
 
   it('restores cached wallpaper on init when enabled', () => {
