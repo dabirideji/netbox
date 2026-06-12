@@ -6,6 +6,7 @@ import argparse
 import errno
 import os
 import signal
+import sqlite3
 import sys
 import threading
 from pathlib import Path
@@ -137,7 +138,20 @@ def run(config: MonitorConfig) -> int:
     gateway = detect_default_gateway()
     network = detect_network_identity(config.wifi_name)
 
-    store = StatusStore(config.db_path, config.storage_config)
+    try:
+        store = StatusStore(config.db_path, config.storage_config)
+    except sqlite3.OperationalError as error:
+        if "locked" in str(error).lower():
+            print(
+                "Database is locked. Another Netbox monitor or desktop app may still be running.",
+                file=sys.stderr,
+            )
+            print(
+                f"Stop it, then retry. Example: lsof -ti tcp:{config.port} | xargs kill",
+                file=sys.stderr,
+            )
+            return 1
+        raise
     apply_runtime_target_seeds(config, store, gateway)
     for target in repair_api_health_targets(store.list_targets()):
         store.update_target(target.id, {"config": target.config, "host": target.host})
@@ -168,11 +182,24 @@ def run(config: MonitorConfig) -> int:
             return 1
         raise
 
+    dev_mode = os.environ.get("NETBOX_DEV_MODE") == "1"
+    store_closed = False
+
+    def close_store() -> None:
+        nonlocal store_closed
+        if store_closed:
+            return
+        store_closed = True
+        store.close()
+
     try:
         threading.Thread(target=server.serve_forever, daemon=True).start()
 
         def stop(_signum: int | None = None, _frame: object | None = None) -> None:
             state.stopping.set()
+            if dev_mode:
+                server.shutdown()
+                close_store()
 
         signal.signal(signal.SIGINT, stop)
         signal.signal(signal.SIGTERM, stop)
@@ -188,9 +215,8 @@ def run(config: MonitorConfig) -> int:
         state.stopping.set()
         server.shutdown()
         server.server_close()
-        store.close()
+        close_store()
 
-    dev_mode = os.environ.get("NETBOX_DEV_MODE") == "1"
     if not dev_mode and not config.no_clear and state.last_summary:
         render_dashboard(state.last_summary, config)
     if not dev_mode:

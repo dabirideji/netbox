@@ -18,6 +18,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 BACKEND_WATCH_PATHS = [ROOT / "backend" / "monitor.py", ROOT / "backend" / "src"]
 RESTART_GRACE_SECONDS = 2.0
+BACKEND_SHUTDOWN_TIMEOUT_SECONDS = 8.0
+SQLITE_UNLOCK_TIMEOUT_SECONDS = 6.0
+BACKEND_RESTART_ATTEMPTS = 3
 
 
 def main() -> int:
@@ -50,7 +53,7 @@ def main() -> int:
     assert_backend_port_available(args.host, args.backend_port)
 
     frontend = start_frontend(args.host, args.frontend_port, args.backend_port)
-    backend = start_backend(args.host, args.backend_port, backend_args)
+    backend = start_backend_with_retries(args.host, args.backend_port, backend_args)
     last_signature = backend_signature()
     backend_started_at = time.monotonic()
 
@@ -80,11 +83,13 @@ def main() -> int:
             elif backend.poll() is not None:
                 code = backend.returncode or 1
                 print(
-                    f"Backend monitor exited with code {code}; not restarting.",
+                    f"Backend monitor exited with code {code}; restarting...",
                     file=sys.stderr,
                     flush=True,
                 )
-                return code
+                backend = restart_backend(args.host, args.backend_port, backend_args, backend)
+                last_signature = backend_signature()
+                backend_started_at = time.monotonic()
     finally:
         stop_process(backend)
         stop_process(frontend)
@@ -107,12 +112,13 @@ def restart_backend(
 ) -> subprocess.Popen[bytes]:
     """Stop the current monitor and start a fresh process once the port is free."""
 
-    stop_process(process)
+    stop_process(process, timeout=BACKEND_SHUTDOWN_TIMEOUT_SECONDS)
     wait_for_port_free(host, port)
     if port_is_open(host, port):
         print_port_conflict(host, port)
         raise SystemExit(1)
-    return start_backend(host, port, extra_args)
+    wait_for_sqlite_available(resolve_dev_db_path(), SQLITE_UNLOCK_TIMEOUT_SECONDS)
+    return start_backend_with_retries(host, port, extra_args)
 
 
 def start_backend(host: str, port: int, extra_args: list[str]) -> subprocess.Popen[bytes]:
@@ -213,7 +219,54 @@ def backend_signature() -> tuple[tuple[str, int, int], ...]:
     return tuple(sorted((str(path.relative_to(ROOT)), path.stat().st_mtime_ns, path.stat().st_size) for path in files))
 
 
-def stop_process(process: subprocess.Popen[bytes]) -> None:
+def resolve_dev_db_path() -> Path:
+    """Return the SQLite path used by the dev backend."""
+
+    raw_path = os.environ.get("NETBOX_DB_PATH", "data/netbox.sqlite3")
+    path = Path(raw_path).expanduser()
+    if not path.is_absolute():
+        path = ROOT / path
+    return path.resolve()
+
+
+def wait_for_sqlite_available(db_path: Path, timeout: float) -> None:
+    """Wait until the dev SQLite database can be opened again."""
+
+    if not db_path.is_file():
+        return
+
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            import sqlite3
+
+            connection = sqlite3.connect(db_path, timeout=1)
+            connection.execute("PRAGMA busy_timeout = 1000")
+            connection.execute("BEGIN IMMEDIATE")
+            connection.rollback()
+            connection.close()
+            return
+        except Exception:
+            time.sleep(0.15)
+
+
+def start_backend_with_retries(host: str, port: int, extra_args: list[str]) -> subprocess.Popen[bytes]:
+    """Start the backend, retrying briefly when SQLite is still locked."""
+
+    last_process: subprocess.Popen[bytes] | None = None
+    for attempt in range(BACKEND_RESTART_ATTEMPTS):
+        if attempt:
+            wait_for_sqlite_available(resolve_dev_db_path(), SQLITE_UNLOCK_TIMEOUT_SECONDS)
+        last_process = start_backend(host, port, extra_args)
+        time.sleep(0.4)
+        if last_process.poll() is None:
+            return last_process
+    if last_process is None:
+        raise SystemExit(1)
+    return last_process
+
+
+def stop_process(process: subprocess.Popen[bytes], timeout: float = 5.0) -> None:
     """Terminate a child process, escalating to kill after a short timeout."""
 
     if process.poll() is not None:
@@ -221,10 +274,10 @@ def stop_process(process: subprocess.Popen[bytes]) -> None:
 
     process.terminate()
     try:
-        process.wait(timeout=5)
+        process.wait(timeout=timeout)
     except subprocess.TimeoutExpired:
         process.kill()
-        process.wait(timeout=5)
+        process.wait(timeout=timeout)
 
 
 def port_is_open(host: str, port: int) -> bool:

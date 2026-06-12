@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -35,36 +36,72 @@ class StoreBase:
         self.storage_config = normalize_storage_config(storage_config)
         if not is_memory:
             self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.connection = sqlite3.connect(
-            ":memory:" if is_memory else self.path,
-            timeout=5,
-            check_same_thread=False,
-        )
-        self.connection.row_factory = sqlite3.Row
         self.lock = threading.RLock()
-        with self.lock:
-            self.connection.execute("PRAGMA busy_timeout = 5000")
-            self.connection.execute("PRAGMA foreign_keys = ON")
-            if not is_memory:
-                self.connection.execute("PRAGMA journal_mode = WAL")
-            self.connection.executescript(SCHEMA)
-            migrate_monitor_targets_sort_order(self.connection)
-            migrate_monitor_targets_is_favorite(self.connection)
-            migrate_alert_tables(self.connection)
-            migrate_alert_dispatch_state(self.connection)
-            migrate_platform_settings(self.connection)
-            migrate_storage_settings(self.connection)
-            persisted = self.connection.execute(
-                "SELECT data FROM storage_settings WHERE id = 1",
-            ).fetchone()
-            if persisted is not None:
-                try:
-                    data = json.loads(persisted["data"])
-                    if isinstance(data, dict):
-                        self.storage_config = merge_storage_settings(self.storage_config, data)
-                except json.JSONDecodeError:
-                    pass
-            self.connection.commit()
+        self.connection = self._open_connection(is_memory)
+        self._initialize_connection(is_memory)
+
+    def _open_connection(self, is_memory: bool) -> sqlite3.Connection:
+        last_error: sqlite3.OperationalError | None = None
+
+        for attempt in range(6):
+            try:
+                connection = sqlite3.connect(
+                    ":memory:" if is_memory else self.path,
+                    timeout=5,
+                    check_same_thread=False,
+                )
+                connection.row_factory = sqlite3.Row
+                return connection
+            except sqlite3.OperationalError as error:
+                last_error = error
+                if "locked" not in str(error).lower() or attempt == 5:
+                    raise
+                time.sleep(0.15 * (attempt + 1))
+
+        if last_error is not None:
+            raise last_error
+        raise sqlite3.OperationalError("database is locked")
+
+    def _initialize_connection(self, is_memory: bool) -> None:
+        last_error: sqlite3.OperationalError | None = None
+
+        for attempt in range(6):
+            try:
+                with self.lock:
+                    self.connection.execute("PRAGMA busy_timeout = 5000")
+                    self.connection.execute("PRAGMA foreign_keys = ON")
+                    if not is_memory:
+                        self.connection.execute("PRAGMA journal_mode = WAL")
+                    self.connection.executescript(SCHEMA)
+                    migrate_monitor_targets_sort_order(self.connection)
+                    migrate_monitor_targets_is_favorite(self.connection)
+                    migrate_alert_tables(self.connection)
+                    migrate_alert_dispatch_state(self.connection)
+                    migrate_platform_settings(self.connection)
+                    migrate_storage_settings(self.connection)
+                    persisted = self.connection.execute(
+                        "SELECT data FROM storage_settings WHERE id = 1",
+                    ).fetchone()
+                    if persisted is not None:
+                        try:
+                            data = json.loads(persisted["data"])
+                            if isinstance(data, dict):
+                                self.storage_config = merge_storage_settings(self.storage_config, data)
+                        except json.JSONDecodeError:
+                            pass
+                    self.connection.commit()
+                return
+            except sqlite3.OperationalError as error:
+                last_error = error
+                if "locked" not in str(error).lower() or attempt == 5:
+                    raise
+                with self.lock:
+                    self.connection.close()
+                self.connection = self._open_connection(is_memory)
+                time.sleep(0.15 * (attempt + 1))
+
+        if last_error is not None:
+            raise last_error
 
     def database_bytes(self) -> int:
         """Return the current SQLite database size in bytes."""
